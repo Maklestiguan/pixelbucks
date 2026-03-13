@@ -20,19 +20,27 @@ export class BetsService {
         throw new BadRequestException('Event not found');
       }
 
-      if (event.status !== 'UPCOMING') {
+      const isUpcoming = event.status === 'UPCOMING';
+      const isLiveBettingOpen =
+        event.status === 'LIVE' &&
+        event.bettingOpenUntil &&
+        event.bettingOpenUntil > new Date();
+
+      if (!isUpcoming && !isLiveBettingOpen) {
         throw new BadRequestException('Event is not available for betting');
       }
 
-      // 5 minute buffer before match start
-      const fiveMinFromNow = new Date(Date.now() + 5 * 60 * 1000);
-      if (event.scheduledAt <= fiveMinFromNow) {
-        throw new BadRequestException('Betting is closed for this event');
+      // 5 minute buffer before match start (only for UPCOMING events)
+      if (isUpcoming) {
+        const fiveMinFromNow = new Date(Date.now() + 5 * 60 * 1000);
+        if (event.scheduledAt <= fiveMinFromNow) {
+          throw new BadRequestException('Betting is closed for this event');
+        }
       }
 
       if (dto.amount <= 0 || dto.amount > event.maxBet) {
         throw new BadRequestException(
-          `Bet amount must be between 1 and ${event.maxBet}`,
+          `Bet amount must be between 0.01 and ${(event.maxBet / 100).toFixed(2)} PB`,
         );
       }
 
@@ -45,7 +53,7 @@ export class BetsService {
       const totalExisting = existingBetsSum._sum.amount || 0;
       if (totalExisting + dto.amount > event.maxBet) {
         throw new BadRequestException(
-          `Total bets on this event would exceed limit of ${event.maxBet}. Current total: ${totalExisting}`,
+          `Total bets on this event would exceed limit of ${(event.maxBet / 100).toFixed(2)} PB. Current total: ${(totalExisting / 100).toFixed(2)} PB`,
         );
       }
 

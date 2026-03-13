@@ -13,6 +13,7 @@ import { BetsModule } from './bets/bets.module';
 import { RabbitMQModule } from './rabbitmq/rabbitmq.module';
 import { OutboxModule } from './outbox/outbox.module';
 import { ChatModule } from './chat/chat.module';
+import { AdminModule } from './admin/admin.module';
 import { RolesGuard } from './common/guards/roles.guard';
 
 @Module({
@@ -49,6 +50,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     EventsModule,
     BetsModule,
     ChatModule,
+    AdminModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

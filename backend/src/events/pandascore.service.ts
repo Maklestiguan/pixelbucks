@@ -1,6 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { type AxiosInstance } from 'axios';
+import { inspect } from 'node:util';
+
+export interface PandascoreStream {
+  main: boolean;
+  language: string;
+  embed_url: string | null;
+  official: boolean;
+  raw_url: string | null;
+}
 
 export interface PandascoreMatch {
   id: number;
@@ -44,6 +53,8 @@ export interface PandascoreMatch {
     name: string;
     slug: string;
   };
+  number_of_games: number;
+  streams_list?: PandascoreStream[];
 }
 
 export interface PandascoreTournament {
@@ -107,21 +118,16 @@ export class PandascoreService {
     return this.fetchMatches(game, 'running', page, perPage, tournamentIds);
   }
 
-  async getMatch(
-    game: 'dota2' | 'csgo',
-    matchId: number,
-  ): Promise<PandascoreMatch | null> {
+  async getMatch(matchId: number): Promise<PandascoreMatch | null> {
     try {
       const { data } = await this.client.get<PandascoreMatch>(
-        `/${game}/matches/${matchId}`,
+        `/matches/${matchId}`,
       );
       return data;
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response?.status === 404) return null;
       const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(
-        `Failed to fetch match ${game}/${matchId}: ${message}`,
-      );
+      this.logger.error(`Failed to fetch match ${matchId}: ${message}`);
       return null;
     }
   }
@@ -145,14 +151,10 @@ export class PandascoreService {
       return data;
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response?.status === 429) {
-        this.logger.warn(
-          `PandaScore rate limit hit for ${game}/tournaments`,
-        );
+        this.logger.warn(`PandaScore rate limit hit for ${game}/tournaments`);
       } else {
         const message = err instanceof Error ? err.message : String(err);
-        this.logger.error(
-          `Failed to fetch ${game}/tournaments: ${message}`,
-        );
+        this.logger.error(`Failed to fetch ${game}/tournaments: ${message}`);
       }
       return [];
     }
@@ -179,6 +181,9 @@ export class PandascoreService {
       );
       return data;
     } catch (err: unknown) {
+      this.logger.debug(
+        `Failed to fetch ${game}/${status}: ${inspect(err, { depth: 3 })}`,
+      );
       if (axios.isAxiosError(err) && err.response?.status === 429) {
         this.logger.warn(`PandaScore rate limit hit for ${game}/${status}`);
       } else {

@@ -1,7 +1,15 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma';
 import { PandascoreService } from './pandascore.service';
-import type { MatchStatus } from '@prisma/client';
+import type { Event as EventModel, MatchStatus, Prisma } from '@prisma/client';
+
+interface RawStream {
+  main: boolean;
+  language: string;
+  embed_url: string | null;
+  official: boolean;
+  raw_url: string | null;
+}
 
 @Injectable()
 export class EventsService {
@@ -19,7 +27,7 @@ export class EventsService {
     limit?: number;
   }) {
     const { game, status, page = 1, limit = 20 } = params;
-    const where: any = {};
+    const where: Prisma.EventWhereInput = {};
     if (game) where.game = game;
     if (status) where.status = status;
 
@@ -34,7 +42,7 @@ export class EventsService {
     ]);
 
     return {
-      data: events.map(this.formatEvent),
+      data: events.map((e) => this.formatEvent(e)),
       total,
       page,
       limit,
@@ -80,9 +88,7 @@ export class EventsService {
         synced++;
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
-        this.logger.error(
-          `Failed to upsert tournament ${t.id}: ${message}`,
-        );
+        this.logger.error(`Failed to upsert tournament ${t.id}: ${message}`);
       }
     }
 
@@ -103,14 +109,20 @@ export class EventsService {
     const pandascoreIds = allowedTournaments.map((t) => t.pandascoreId);
 
     if (pandascoreIds.length === 0) {
-      this.logger.warn('No synced tournaments — skipping match sync. Run sync-tournaments first.');
+      this.logger.warn(
+        'No synced tournaments — skipping match sync. Run sync-tournaments first.',
+      );
       return { synced: 0, dota2: 0, cs2: 0 };
     }
 
     // Filter by tournament_id in PandaScore request so we only get tier S/A matches
     const [dota2Matches, cs2Matches] = await Promise.all([
-      this.pandascore.getUpcomingMatches('dota2', { tournamentIds: pandascoreIds }),
-      this.pandascore.getUpcomingMatches('csgo', { tournamentIds: pandascoreIds }),
+      this.pandascore.getUpcomingMatches('dota2', {
+        tournamentIds: pandascoreIds,
+      }),
+      this.pandascore.getUpcomingMatches('csgo', {
+        tournamentIds: pandascoreIds,
+      }),
     ]);
 
     let synced = 0;
@@ -129,6 +141,7 @@ export class EventsService {
             game,
             tournament:
               match.tournament?.name || match.league?.name || 'Unknown',
+            league: match.league?.name || null,
             tournamentId: tournamentDbId || null,
             teamA: match.opponents[0].opponent.name,
             teamALogo: match.opponents[0].opponent.image_url,
@@ -139,14 +152,16 @@ export class EventsService {
             ),
             status: 'UPCOMING',
             // PandaScore free tier doesn't provide betting odds.
-            // Default 1.90/1.90 — admins can adjust via PATCH /api/admin/events/:id
-            oddsA: 1.9,
-            oddsB: 1.9,
-            rawData: match as any,
+            // Default 1.86/1.86 — admins can adjust via PATCH /api/admin/events/:id
+            oddsA: 1.86,
+            oddsB: 1.86,
+            bestOf: match.number_of_games || null,
+            rawData: match as unknown as Prisma.InputJsonValue,
           },
           update: {
             tournament:
               match.tournament?.name || match.league?.name || 'Unknown',
+            league: match.league?.name || null,
             tournamentId: tournamentDbId || null,
             teamA: match.opponents[0].opponent.name,
             teamALogo: match.opponents[0].opponent.image_url,
@@ -155,7 +170,8 @@ export class EventsService {
             scheduledAt: new Date(
               match.scheduled_at || match.begin_at || new Date(),
             ),
-            rawData: match as any,
+            bestOf: match.number_of_games || null,
+            rawData: match as unknown as Prisma.InputJsonValue,
           },
         });
         synced++;
@@ -182,26 +198,34 @@ export class EventsService {
       this.pandascore.getRunningMatches('csgo', { tournamentIds }),
     ]);
 
-    const runningIds = new Set(
-      [...dota2Running, ...cs2Running].map((m) => m.id),
-    );
+    const allRunning = [...dota2Running, ...cs2Running];
+    const runningMap = new Map(allRunning.map((m) => [m.id, m]));
 
-    if (runningIds.size === 0) return { updated: 0 };
+    if (runningMap.size === 0) return { updated: 0 };
 
     // Find UPCOMING events whose PandaScore match is now running
     const upcomingEvents = await this.prisma.event.findMany({
       where: {
         status: 'UPCOMING',
-        pandascoreId: { in: [...runningIds] },
+        pandascoreId: { in: [...runningMap.keys()] },
       },
       select: { id: true, pandascoreId: true },
     });
 
     let updated = 0;
     for (const event of upcomingEvents) {
+      const match = runningMap.get(event.pandascoreId);
+      const updateData: Prisma.EventUpdateInput = {
+        status: 'LIVE',
+        league: match?.league?.name || null,
+      };
+      if (match) {
+        // Refresh rawData with running match data (includes streams_list)
+        updateData.rawData = match as unknown as Prisma.InputJsonValue;
+      }
       await this.prisma.event.update({
         where: { id: event.id },
-        data: { status: 'LIVE' },
+        data: updateData,
       });
       updated++;
     }
@@ -228,11 +252,7 @@ export class EventsService {
     let cancelled = 0;
 
     for (const event of pendingEvents) {
-      const game = event.game === 'dota2' ? 'dota2' : 'csgo';
-      const match = await this.pandascore.getMatch(
-        game as 'dota2' | 'csgo',
-        event.pandascoreId,
-      );
+      const match = await this.pandascore.getMatch(event.pandascoreId);
 
       if (!match) continue;
 
@@ -246,19 +266,23 @@ export class EventsService {
       }
 
       if (match.status === 'finished' && match.winner_id) {
-        const winnerId =
-          match.winner_id === match.opponents?.[0]?.opponent?.id ? 'a' : 'b';
+        const teamAId = match.opponents?.[0]?.opponent?.id;
+        const winnerId = match.winner_id === teamAId ? 'a' : 'b';
+
+        // Extract map scores from results
+        const results = match.results || [];
+        const scoreA = results.find((r) => r.team_id === teamAId)?.score ?? null;
+        const scoreB = results.find((r) => r.team_id !== teamAId)?.score ?? null;
 
         // If it's a draw (equal scores), treat as cancelled
-        const scores = match.results || [];
         const isDraw =
-          scores.length >= 2 && scores[0].score === scores[1].score;
+          results.length >= 2 && results[0].score === results[1].score;
 
         if (isDraw) {
           await this.cancelEvent(event.id);
           cancelled++;
         } else {
-          await this.finishEvent(event.id, winnerId);
+          await this.finishEvent(event.id, winnerId, scoreA, scoreB, match.number_of_games);
           finished++;
         }
       } else if (match.status === 'canceled') {
@@ -273,11 +297,17 @@ export class EventsService {
     return { checked: pendingEvents.length, finished, cancelled };
   }
 
-  private async finishEvent(eventId: string, winnerId: string) {
+  private async finishEvent(
+    eventId: string,
+    winnerId: string,
+    scoreA: number | null,
+    scoreB: number | null,
+    bestOf?: number,
+  ) {
     await this.prisma.$transaction([
       this.prisma.event.update({
         where: { id: eventId },
-        data: { status: 'FINISHED', winnerId },
+        data: { status: 'FINISHED', winnerId, scoreA, scoreB, bestOf: bestOf ?? null },
       }),
       this.prisma.outboxEvent.create({
         data: {
@@ -303,12 +333,36 @@ export class EventsService {
     ]);
   }
 
-  private formatEvent(event: any) {
+  private formatEvent(event: EventModel) {
+    // Extract en/ru streams from rawData (PandaScore streams_list), deduplicated by embed_url
+    const rawData = event.rawData as Record<string, unknown> | null;
+    const rawStreams: RawStream[] =
+      (rawData?.streams_list as RawStream[] | undefined) ?? [];
+    const seen = new Set<string>();
+    const streams = rawStreams
+      .filter(
+        (s): s is RawStream & { embed_url: string } =>
+          (s.language === 'en' || s.language === 'ru') && !!s.embed_url,
+      )
+      .filter((s) => {
+        if (seen.has(s.embed_url)) return false;
+        seen.add(s.embed_url);
+        return true;
+      })
+      .map((s) => ({
+        language: s.language,
+        embedUrl: s.embed_url,
+        rawUrl: s.raw_url ?? '',
+        official: s.official,
+        main: s.main,
+      }));
+
     return {
       id: event.id,
       pandascoreId: event.pandascoreId,
       game: event.game,
       tournament: event.tournament,
+      league: event.league || null,
       tournamentId: event.tournamentId,
       teamA: event.teamA,
       teamALogo: event.teamALogo,
@@ -319,7 +373,12 @@ export class EventsService {
       oddsA: event.oddsA,
       oddsB: event.oddsB,
       winnerId: event.winnerId,
+      scoreA: event.scoreA,
+      scoreB: event.scoreB,
+      bestOf: event.bestOf,
       maxBet: event.maxBet,
+      bettingOpenUntil: event.bettingOpenUntil?.toISOString() ?? null,
+      streams,
     };
   }
 }

@@ -64,7 +64,12 @@ export class UsersService {
   ) {
     const targetUser = await this.prisma.user.findUnique({
       where: { id: targetUserId },
-      select: { id: true, username: true, statsPublic: true, totalProfit: true },
+      select: {
+        id: true,
+        username: true,
+        statsPublic: true,
+        totalProfit: true,
+      },
     });
 
     if (!targetUser) {

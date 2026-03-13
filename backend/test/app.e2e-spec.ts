@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import * as bcrypt from 'bcrypt';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma';
 import { BetsService } from '../src/bets/bets.service';
@@ -435,6 +436,124 @@ describe('PixelBucks E2E', () => {
 
       expect(res.body.totalProfit).toBeDefined();
       expect(res.body.totalProfit).toBe('12.50');
+    });
+  });
+
+  describe('Admin', () => {
+    let adminToken: string;
+
+    beforeAll(async () => {
+      // Create admin user directly in DB
+      const hash = await bcrypt.hash('admin123', 10);
+      await prisma.user.create({
+        data: {
+          username: 'e2eadmin',
+          passwordHash: hash,
+          role: 'ADMIN',
+        },
+      });
+
+      const res = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ username: 'e2eadmin', password: 'admin123' })
+        .expect(201);
+
+      adminToken = res.body.accessToken;
+    });
+
+    it('GET /api/admin/stats - regular user should get 403', async () => {
+      await request(app.getHttpServer())
+        .get('/api/admin/stats')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+    });
+
+    it('GET /api/admin/stats - admin should get platform stats', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/admin/stats')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(res.body.totalUsers).toBeGreaterThanOrEqual(2);
+      expect(res.body.totalBets).toBeGreaterThanOrEqual(1);
+      expect(res.body.totalVolume).toBeDefined();
+      expect(res.body.activeEvents).toBeDefined();
+      expect(res.body.totalCirculation).toBeDefined();
+    });
+
+    it('GET /api/admin/users - should list users', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/admin/users')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(res.body.data.length).toBeGreaterThanOrEqual(2);
+      expect(res.body.total).toBeGreaterThanOrEqual(2);
+    });
+
+    it('GET /api/admin/users?search=e2euser - should filter by username', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/admin/users?search=e2euser')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(res.body.data.length).toBe(1);
+      expect(res.body.data[0].username).toBe('e2euser');
+    });
+
+    it('GET /api/admin/users/:id - should return user details', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/admin/users/${userId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(res.body.username).toBe('e2euser');
+      expect(res.body.totalBets).toBeDefined();
+      expect(res.body.balance).toBeDefined();
+    });
+
+    it('PATCH /api/admin/users/:id/balance - should adjust balance', async () => {
+      const beforeRes = await request(app.getHttpServer())
+        .get(`/api/admin/users/${userId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const balanceBefore = parseFloat(beforeRes.body.balance);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/api/admin/users/${userId}/balance`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ amount: 5000, reason: 'e2e test credit' })
+        .expect(200);
+
+      expect(parseFloat(res.body.balance)).toBe(balanceBefore + 50.0);
+    });
+
+    it('PATCH /api/admin/events/:id - should update odds', async () => {
+      const res = await request(app.getHttpServer())
+        .patch(`/api/admin/events/${eventId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ oddsA: 2.5, oddsB: 1.65 })
+        .expect(200);
+
+      expect(res.body.oddsA).toBe(2.5);
+      expect(res.body.oddsB).toBe(1.65);
+    });
+
+    it('PATCH /api/admin/events/:id - regular user should get 403', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/admin/events/${eventId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ oddsA: 3.0 })
+        .expect(403);
+    });
+
+    it('PATCH /api/admin/events/:id - should reject invalid odds', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/admin/events/${eventId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ oddsA: 0.5 })
+        .expect(400);
     });
   });
 });

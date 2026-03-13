@@ -77,6 +77,7 @@ model Event {
   game           String      // "dota2" | "cs2"
   tournament     String      // display name for backward compat
   tournamentId   String?     @map("tournament_id")
+  league         String?     // league display name (e.g. "ESL Pro League")
   teamA          String      @map("team_a")
   teamALogo      String?     @map("team_a_logo")
   teamB          String      @map("team_b")
@@ -86,7 +87,11 @@ model Event {
   oddsA          Float?      @map("odds_a")
   oddsB          Float?      @map("odds_b")
   winnerId       String?     @map("winner_id") // "a" | "b" | null (draw = cancelled)
+  scoreA         Int?        @map("score_a")  // maps score (e.g. 0 in a bo3)
+  scoreB         Int?        @map("score_b")  // maps score (e.g. 2 in a bo3)
+  bestOf         Int?        @map("best_of")  // number_of_games from PandaScore (e.g. 3 for bo3)
   maxBet         Int         @default(10000) @map("max_bet") // cents: 10000 = 100.00 PB
+  bettingOpenUntil DateTime? @map("betting_open_until") // admin can open betting on LIVE events for a time window
   rawData        Json?       @map("raw_data")
   createdAt      DateTime    @default(now()) @map("created_at")
   updatedAt      DateTime    @updatedAt @map("updated_at")

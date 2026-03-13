@@ -11,7 +11,10 @@ import {
 } from './events-sync.processor';
 
 @Module({
-  imports: [ConfigModule, BullModule.registerQueue({ name: EVENTS_SYNC_QUEUE })],
+  imports: [
+    ConfigModule,
+    BullModule.registerQueue({ name: EVENTS_SYNC_QUEUE }),
+  ],
   controllers: [EventsController],
   providers: [EventsService, PandascoreService, EventsSyncProcessor],
   exports: [EventsService],
@@ -31,19 +34,35 @@ export class EventsModule implements OnModuleInit {
       await this.syncQueue.removeRepeatableByKey(job.key);
     }
 
-    const tournamentsInterval = this.config.get<number>('SYNC_TOURNAMENTS_INTERVAL_MS', 1800000);
-    const matchesInterval = this.config.get<number>('SYNC_MATCHES_INTERVAL_MS', 900000);
-    const liveInterval = this.config.get<number>('DETECT_LIVE_INTERVAL_MS', 120000);
-    const resultsInterval = this.config.get<number>('CHECK_RESULTS_INTERVAL_MS', 300000);
+    const tournamentsInterval = this.config.get<number>(
+      'SYNC_TOURNAMENTS_INTERVAL_MS',
+      10 * 180000,
+    );
+    const matchesInterval = this.config.get<number>(
+      'SYNC_MATCHES_INTERVAL_MS',
+      10 * 90000,
+    );
+    const liveInterval = this.config.get<number>(
+      'DETECT_LIVE_INTERVAL_MS',
+      10 * 12000,
+    );
+    const resultsInterval = this.config.get<number>(
+      'CHECK_RESULTS_INTERVAL_MS',
+      10 * 30000,
+    );
+
+    const repeatOpts = {
+      removeOnComplete: { count: 10 },
+      removeOnFail: { count: 50 },
+    };
 
     // Fetch tier S/A tournaments from PandaScore, upsert to DB
     await this.syncQueue.add(
       'sync-tournaments',
       {},
       {
-        repeat: { every: tournamentsInterval },
-        removeOnComplete: { count: 10 },
-        removeOnFail: { count: 50 },
+        repeat: { every: tournamentsInterval, immediately: true },
+        ...repeatOpts,
       },
     );
 
@@ -52,9 +71,8 @@ export class EventsModule implements OnModuleInit {
       'sync-upcoming-matches',
       {},
       {
-        repeat: { every: matchesInterval },
-        removeOnComplete: { count: 10 },
-        removeOnFail: { count: 50 },
+        repeat: { every: matchesInterval, immediately: true },
+        ...repeatOpts,
       },
     );
 
@@ -63,9 +81,8 @@ export class EventsModule implements OnModuleInit {
       'detect-live-matches',
       {},
       {
-        repeat: { every: liveInterval },
-        removeOnComplete: { count: 10 },
-        removeOnFail: { count: 50 },
+        repeat: { every: liveInterval, immediately: true },
+        ...repeatOpts,
       },
     );
 
@@ -74,9 +91,8 @@ export class EventsModule implements OnModuleInit {
       'check-match-results',
       {},
       {
-        repeat: { every: resultsInterval },
-        removeOnComplete: { count: 10 },
-        removeOnFail: { count: 50 },
+        repeat: { every: resultsInterval, immediately: true },
+        ...repeatOpts,
       },
     );
 
