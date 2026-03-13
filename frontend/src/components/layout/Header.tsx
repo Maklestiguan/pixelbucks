@@ -26,9 +26,6 @@ export function Header() {
           <Link to="/bets" className="hover:text-purple-300">
             My Bets
           </Link>
-          <Link to="/chat" className="hover:text-purple-300">
-            Chat
-          </Link>
           <Link to="/challenges" className="hover:text-purple-300">
             Challenges
           </Link>

@@ -1,6 +1,7 @@
 import { Outlet, Navigate } from "react-router-dom";
 import { useAuthContext } from "../../context/AuthContext";
 import { Header } from "./Header";
+import { ChatWidget } from "../ChatWidget";
 
 export function Layout() {
   const { isAuthenticated, isLoading } = useAuthContext();
@@ -23,6 +24,7 @@ export function Layout() {
       <main className="max-w-6xl mx-auto px-6 py-6">
         <Outlet />
       </main>
+      <ChatWidget />
     </div>
   );
 }

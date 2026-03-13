@@ -12,11 +12,20 @@ export interface AuthResponse {
   user: Pick<User, "id" | "username" | "role">;
 }
 
+export interface EventStream {
+  language: "en" | "ru";
+  embedUrl: string;
+  rawUrl: string;
+  official: boolean;
+  main: boolean;
+}
+
 export interface Event {
   id: string;
   pandascoreId: number;
   game: "dota2" | "cs2";
   tournament: string;
+  league: string | null;
   teamA: string;
   teamALogo: string | null;
   teamB: string;
@@ -26,7 +35,12 @@ export interface Event {
   oddsA: number | null;
   oddsB: number | null;
   winnerId: string | null;
+  scoreA: number | null;
+  scoreB: number | null;
+  bestOf: number | null;
   maxBet: number;
+  bettingOpenUntil: string | null;
+  streams: EventStream[];
 }
 
 export interface Bet {
@@ -49,4 +63,34 @@ export interface UserStats {
   winPercent: number;
   roiNet: string;
   roiPercent: number;
+}
+
+export interface AdminUser {
+  id: string;
+  username: string;
+  role: "USER" | "ADMIN";
+  balance: string;
+  totalProfit: string;
+  statsPublic: boolean;
+  createdAt: string;
+}
+
+export interface AdminUserDetails extends AdminUser {
+  totalBets: number;
+}
+
+export interface PlatformStats {
+  totalUsers: number;
+  totalBets: number;
+  totalVolume: string;
+  activeEvents: number;
+  totalCirculation: string;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
