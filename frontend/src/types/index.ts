@@ -63,6 +63,28 @@ export interface UserStats {
   winPercent: number;
   roiNet: string;
   roiPercent: number;
+  totalProfit: string;
+}
+
+export interface UserChallengeView {
+  id: string;
+  challengeId: string;
+  type: "DAILY" | "WEEKLY";
+  title: string;
+  description: string;
+  reward: number;
+  criteria: { action: string; count: number };
+  progress: number;
+  status: "ACTIVE" | "COMPLETED" | "EXPIRED";
+  completedAt: string | null;
+  expiresAt: string;
+}
+
+export interface LeaderboardEntry {
+  id: string;
+  username: string;
+  totalProfit: string;
+  totalBets: number;
 }
 
 export interface AdminUser {
