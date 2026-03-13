@@ -51,6 +51,7 @@ model User {
   bets             Bet[]
   chatMessages     ChatMessage[]
   userChallenges   UserChallenge[]
+  feedback         Feedback[]
 
   @@map("users")
 }
@@ -169,6 +170,18 @@ model UserChallenge {
 
   @@unique([userId, challengeId])
   @@map("user_challenges")
+}
+
+model Feedback {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  text      String   @db.VarChar(500)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@map("feedback")
 }
 
 model OutboxEvent {

@@ -1,13 +1,19 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma';
 import { UpdateProfileDto } from './dto';
 
+const REPLENISH_AMOUNT = 50000; // 500.00 PB in cents
+const REPLENISH_INTERVAL_DAYS = 7;
+
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async getMe(userId: string) {
@@ -118,6 +124,55 @@ export class UsersService {
       roiPercent: Math.round(roiPercent * 100) / 100,
       totalProfit: this.formatBalance(targetUser.totalProfit),
     };
+  }
+
+  /** Find users eligible for weekly 500 PB top-up and return their IDs */
+  async findReplenishableUsers(): Promise<string[]> {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - REPLENISH_INTERVAL_DAYS);
+
+    const users = await this.prisma.user.findMany({
+      where: { lastReplenishedAt: { lt: cutoff } },
+      select: { id: true },
+    });
+
+    return users.map((u) => u.id);
+  }
+
+  /** Credit 500 PB to a single user and update lastReplenishedAt */
+  async replenishUser(userId: string) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        balance: { increment: REPLENISH_AMOUNT },
+        lastReplenishedAt: new Date(),
+      },
+    });
+    this.logger.log(
+      `Replenished user ${userId} with ${REPLENISH_AMOUNT / 100} PB`,
+    );
+  }
+
+  /** Leaderboard: top users by totalProfit (public stats only) */
+  async getLeaderboard(limit = 20) {
+    const users = await this.prisma.user.findMany({
+      where: { statsPublic: true },
+      orderBy: { totalProfit: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        username: true,
+        totalProfit: true,
+        _count: { select: { bets: true } },
+      },
+    });
+
+    return users.map((u) => ({
+      id: u.id,
+      username: u.username,
+      totalProfit: this.formatBalance(u.totalProfit),
+      totalBets: u._count.bets,
+    }));
   }
 
   private formatBalance(cents: number): string {

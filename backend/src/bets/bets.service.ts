@@ -1,19 +1,23 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma';
+import { ChallengesService } from '../challenges/challenges.service';
 import { PlaceBetDto } from './dto';
 
 @Injectable()
 export class BetsService {
   private readonly logger = new Logger(BetsService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private challengesService: ChallengesService,
+  ) {}
 
   async placeBet(userId: string, dto: PlaceBetDto) {
     if (!['a', 'b'].includes(dto.selection)) {
       throw new BadRequestException('Selection must be "a" or "b"');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const event = await tx.event.findUnique({ where: { id: dto.eventId } });
 
       if (!event) {
@@ -87,9 +91,26 @@ export class BetsService {
 
       return {
         ...bet,
+        game: event.game,
         potentialPayout: Math.floor(bet.amount * bet.oddsAtPlacement),
       };
     });
+
+    // Track challenge progress (fire-and-forget, don't block the bet response)
+    this.challengesService
+      .trackProgress(userId, 'place_bet')
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Challenge tracking failed: ${msg}`);
+      });
+    this.challengesService
+      .trackProgress(userId, 'total_wagered', dto.amount)
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Challenge tracking failed: ${msg}`);
+      });
+
+    return result;
   }
 
   async getMyBets(
@@ -154,7 +175,7 @@ export class BetsService {
   }
 
   async resolveEventBets(eventId: string, winnerId: string) {
-    return this.prisma.$transaction(async (tx) => {
+    const winnerUserIds = await this.prisma.$transaction(async (tx) => {
       const pendingBets = await tx.bet.findMany({
         where: { eventId, status: 'PENDING' },
       });
@@ -162,7 +183,6 @@ export class BetsService {
       for (const bet of pendingBets) {
         const won = bet.selection === winnerId;
         const payout = won ? Math.floor(bet.amount * bet.oddsAtPlacement) : 0;
-        // profit = payout - amount for wins, -amount for losses
         const profit = won ? payout - bet.amount : -bet.amount;
 
         await tx.bet.update({
@@ -185,7 +205,22 @@ export class BetsService {
       this.logger.log(
         `Resolved ${pendingBets.length} bets for event ${eventId}, winner: ${winnerId}`,
       );
+
+      return [
+        ...new Set(
+          pendingBets
+            .filter((b) => b.selection === winnerId)
+            .map((b) => b.userId),
+        ),
+      ];
     });
+
+    // Track win_bet challenge progress (once per user per event)
+    for (const uid of winnerUserIds) {
+      this.challengesService
+        .trackProgress(uid, 'win_bet')
+        .catch(() => {});
+    }
   }
 
   async refundEventBets(eventId: string) {

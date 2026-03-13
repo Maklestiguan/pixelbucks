@@ -17,6 +17,11 @@ export class UsersController {
     return this.usersService.updateMe(userId, dto);
   }
 
+  @Get('leaderboard')
+  getLeaderboard() {
+    return this.usersService.getLeaderboard();
+  }
+
   @Get(':id/stats')
   getStats(
     @Param('id') targetUserId: string,

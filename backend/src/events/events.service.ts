@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma';
 import { PandascoreService } from './pandascore.service';
 import type { Event as EventModel, MatchStatus, Prisma } from '@prisma/client';
@@ -14,11 +15,16 @@ interface RawStream {
 @Injectable()
 export class EventsService {
   private readonly logger = new Logger(EventsService.name);
+  private readonly defaultMaxBet: number;
 
   constructor(
     private prisma: PrismaService,
     private pandascore: PandascoreService,
-  ) {}
+    private config: ConfigService,
+  ) {
+    // Global default max bet per user per event (cents). Admin can override per event.
+    this.defaultMaxBet = this.config.get<number>('GLOBAL_MAX_BET', 10000);
+  }
 
   async listEvents(params: {
     game?: string;
@@ -155,6 +161,7 @@ export class EventsService {
             // Default 1.86/1.86 — admins can adjust via PATCH /api/admin/events/:id
             oddsA: 1.86,
             oddsB: 1.86,
+            maxBet: this.defaultMaxBet,
             bestOf: match.number_of_games || null,
             rawData: match as unknown as Prisma.InputJsonValue,
           },

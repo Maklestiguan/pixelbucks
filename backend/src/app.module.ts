@@ -14,6 +14,8 @@ import { RabbitMQModule } from './rabbitmq/rabbitmq.module';
 import { OutboxModule } from './outbox/outbox.module';
 import { ChatModule } from './chat/chat.module';
 import { AdminModule } from './admin/admin.module';
+import { ChallengesModule } from './challenges/challenges.module';
+import { FeedbackModule } from './feedback/feedback.module';
 import { RolesGuard } from './common/guards/roles.guard';
 
 @Module({
@@ -51,6 +53,8 @@ import { RolesGuard } from './common/guards/roles.guard';
     BetsModule,
     ChatModule,
     AdminModule,
+    ChallengesModule,
+    FeedbackModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
