@@ -1,3 +1,5 @@
+ARG RUNTIME_IMAGE=node:20-alpine
+
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
@@ -5,7 +7,6 @@ RUN npm ci
 COPY . .
 RUN npx prisma generate && npm run build
 
-ARG RUNTIME_IMAGE=node:20-alpine
 FROM ${RUNTIME_IMAGE}
 WORKDIR /app
 ENV NODE_ENV=production
@@ -18,4 +19,4 @@ COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 EXPOSE 3000
 ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/src/main.js"]
