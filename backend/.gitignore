@@ -1,0 +1,46 @@
+# compiled output
+dist
+tmp
+/out-tsc
+
+# dependencies
+/node_modules
+
+/generated/prisma
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# misc
+coverage
+/coverage
+*.log
+/typings
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Test outputs
+junit.xml
+jest-html-reporters-attach
+jest_html_reporters.html
+
+
+# CQRS OpenAPI Schema
+schema.json
+
+.env

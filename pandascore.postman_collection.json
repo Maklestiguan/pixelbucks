@@ -1,0 +1,313 @@
+{
+  "info": {
+    "name": "PandaScore API — PixelBucks",
+    "description": "PandaScore API endpoints used by the PixelBucks project.\n\nSet the `token` variable to your PandaScore API token before running requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://api.pandascore.co",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "YOUR_PANDASCORE_TOKEN",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Dota 2",
+      "item": [
+        {
+          "name": "Tournaments",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/dota2/tournaments?page=1&per_page=50&sort=-begin_at",
+              "host": ["{{baseUrl}}"],
+              "path": ["dota2", "tournaments"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "50" },
+                { "key": "sort", "value": "-begin_at" }
+              ]
+            },
+            "description": "Fetch Dota 2 tournaments sorted by most recent. Used by sync-tournaments job to find tier S/A tournaments."
+          }
+        },
+        {
+          "name": "Upcoming Matches",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/dota2/matches/upcoming?page=1&per_page=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["dota2", "matches", "upcoming"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "50" }
+              ]
+            },
+            "description": "Fetch upcoming Dota 2 matches. Used by sync-upcoming-matches job."
+          }
+        },
+        {
+          "name": "Upcoming Matches (filtered by tournament)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/dota2/matches/upcoming?page=1&per_page=50&filter[tournament_id]=1234,5678",
+              "host": ["{{baseUrl}}"],
+              "path": ["dota2", "matches", "upcoming"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "50" },
+                { "key": "filter[tournament_id]", "value": "1234,5678", "description": "Comma-separated tournament IDs from synced tournaments" }
+              ]
+            },
+            "description": "Fetch upcoming Dota 2 matches filtered by synced tournament IDs. This is the primary usage in the app."
+          }
+        },
+        {
+          "name": "Running Matches",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/dota2/matches/running?page=1&per_page=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["dota2", "matches", "running"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "50" }
+              ]
+            },
+            "description": "Fetch currently running Dota 2 matches. Used by detect-live-matches job to flip UPCOMING → LIVE."
+          }
+        },
+        {
+          "name": "Running Matches (filtered by tournament)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/dota2/matches/running?page=1&per_page=50&filter[tournament_id]=1234,5678",
+              "host": ["{{baseUrl}}"],
+              "path": ["dota2", "matches", "running"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "50" },
+                { "key": "filter[tournament_id]", "value": "1234,5678", "description": "Comma-separated tournament IDs" }
+              ]
+            },
+            "description": "Fetch running Dota 2 matches filtered by tournament IDs."
+          }
+        },
+        {
+          "name": "Get Match by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/dota2/matches/123456",
+              "host": ["{{baseUrl}}"],
+              "path": ["dota2", "matches", "123456"]
+            },
+            "description": "Fetch a single Dota 2 match by PandaScore ID. Used by check-match-results job to verify match status."
+          }
+        }
+      ]
+    },
+    {
+      "name": "CS2",
+      "item": [
+        {
+          "name": "Tournaments",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/csgo/tournaments?page=1&per_page=50&sort=-begin_at",
+              "host": ["{{baseUrl}}"],
+              "path": ["csgo", "tournaments"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "50" },
+                { "key": "sort", "value": "-begin_at" }
+              ]
+            },
+            "description": "Fetch CS2 tournaments sorted by most recent. Note: PandaScore uses 'csgo' as the slug for CS2."
+          }
+        },
+        {
+          "name": "Upcoming Matches",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/csgo/matches/upcoming?page=1&per_page=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["csgo", "matches", "upcoming"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "50" }
+              ]
+            },
+            "description": "Fetch upcoming CS2 matches."
+          }
+        },
+        {
+          "name": "Upcoming Matches (filtered by tournament)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/csgo/matches/upcoming?page=1&per_page=50&filter[tournament_id]=1234,5678",
+              "host": ["{{baseUrl}}"],
+              "path": ["csgo", "matches", "upcoming"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "50" },
+                { "key": "filter[tournament_id]", "value": "1234,5678", "description": "Comma-separated tournament IDs from synced tournaments" }
+              ]
+            },
+            "description": "Fetch upcoming CS2 matches filtered by synced tournament IDs."
+          }
+        },
+        {
+          "name": "Running Matches",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/csgo/matches/running?page=1&per_page=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["csgo", "matches", "running"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "50" }
+              ]
+            },
+            "description": "Fetch currently running CS2 matches."
+          }
+        },
+        {
+          "name": "Running Matches (filtered by tournament)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/csgo/matches/running?page=1&per_page=50&filter[tournament_id]=1234,5678",
+              "host": ["{{baseUrl}}"],
+              "path": ["csgo", "matches", "running"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "50" },
+                { "key": "filter[tournament_id]", "value": "1234,5678", "description": "Comma-separated tournament IDs" }
+              ]
+            },
+            "description": "Fetch running CS2 matches filtered by tournament IDs."
+          }
+        },
+        {
+          "name": "Get Match by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/csgo/matches/123456",
+              "host": ["{{baseUrl}}"],
+              "path": ["csgo", "matches", "123456"]
+            },
+            "description": "Fetch a single CS2 match by PandaScore ID."
+          }
+        }
+      ]
+    },
+    {
+      "name": "General",
+      "item": [
+        {
+          "name": "All Upcoming Matches (any game)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/matches/upcoming?page=1&per_page=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["matches", "upcoming"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "50" }
+              ]
+            },
+            "description": "Fetch upcoming matches across all games. Useful for exploration."
+          }
+        },
+        {
+          "name": "All Running Matches (any game)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/matches/running?page=1&per_page=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["matches", "running"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "50" }
+              ]
+            },
+            "description": "Fetch running matches across all games."
+          }
+        },
+        {
+          "name": "All Past Matches (any game)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/matches/past?page=1&per_page=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["matches", "past"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "50" }
+              ]
+            },
+            "description": "Fetch past/finished matches across all games."
+          }
+        },
+        {
+          "name": "All Tournaments (any game)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/tournaments?page=1&per_page=50&sort=-begin_at",
+              "host": ["{{baseUrl}}"],
+              "path": ["tournaments"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "50" },
+                { "key": "sort", "value": "-begin_at" }
+              ]
+            },
+            "description": "Fetch tournaments across all games."
+          }
+        },
+        {
+          "name": "Get Single Match",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/matches/123456",
+              "host": ["{{baseUrl}}"],
+              "path": ["matches", "123456"]
+            },
+            "description": "Fetch any match by ID (game-agnostic)."
+          }
+        }
+      ]
+    }
+  ]
+}

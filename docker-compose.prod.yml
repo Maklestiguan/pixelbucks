@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: pixelbucks
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RMQ_PASSWORD}
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    depends_on: [postgres, rabbitmq, redis]
+    environment:
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/pixelbucks
+      RABBITMQ_URL: amqp://${RMQ_USER}:${RMQ_PASSWORD}@rabbitmq:5672
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: "604800000"
+      PANDASCORE_TOKEN: ${PANDASCORE_TOKEN}
+      PANDASCORE_BASE_URL: https://api.pandascore.co
+      FRONTEND_URL: ${FRONTEND_URL}
+      NODE_ENV: production
+      PORT: "3000"
+    # No public port — nginx proxies /api and /socket.io internally
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: always
+    depends_on: [backend]
+    ports:
+      - "127.0.0.1:8080:80"
+
+volumes:
+  pgdata:

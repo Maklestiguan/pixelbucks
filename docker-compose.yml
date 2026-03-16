@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - '5444:5432'
+    environment:
+      POSTGRES_USER: pixelbucks
+      POSTGRES_PASSWORD: pixelbucks
+      POSTGRES_DB: pixelbucks
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - '5777:5672'
+      - '15777:15672'
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6777:6379'
+
+volumes:
+  postgres_data:

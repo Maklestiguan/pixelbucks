@@ -1,0 +1,198 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum BetStatus {
+  PENDING
+  WON
+  LOST
+  CANCELLED
+}
+
+enum MatchStatus {
+  UPCOMING
+  LIVE
+  FINISHED
+  CANCELLED
+}
+
+enum ChallengeType {
+  DAILY
+  WEEKLY
+}
+
+enum ChallengeStatus {
+  ACTIVE
+  COMPLETED
+  EXPIRED
+}
+
+model User {
+  id               String    @id @default(uuid())
+  username         String    @unique
+  passwordHash     String    @map("password_hash")
+  role             Role      @default(USER)
+  balance          Int       @default(100000) // cents: 100000 = 1000.00 PB
+  totalProfit      Int       @default(0) @map("total_profit") // cumulative P/L in cents (positive = net profit, negative = net loss)
+  statsPublic      Boolean   @default(true)   @map("stats_public")
+  lastReplenishedAt DateTime @default(now())  @map("last_replenished_at") // last weekly 500 PB top-up
+  createdAt        DateTime  @default(now())  @map("created_at")
+  updatedAt        DateTime  @updatedAt       @map("updated_at")
+
+  bets             Bet[]
+  chatMessages     ChatMessage[]
+  userChallenges   UserChallenge[]
+  feedback         Feedback[]
+
+  @@map("users")
+}
+
+model Tournament {
+  id             String   @id @default(uuid())
+  pandascoreId   Int      @unique @map("pandascore_id")
+  name           String
+  tier           String   // "s" | "a" | "b" | "c" | "d" | "unranked"
+  game           String   // "dota2" | "cs2"
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  events         Event[]
+
+  @@index([tier])
+  @@index([game])
+  @@map("tournaments")
+}
+
+model Event {
+  id             String      @id @default(uuid())
+  pandascoreId   Int         @unique @map("pandascore_id")
+  game           String      // "dota2" | "cs2"
+  tournament     String      // display name for backward compat
+  tournamentId   String?     @map("tournament_id")
+  league         String?     // league display name (e.g. "ESL Pro League")
+  teamA          String      @map("team_a")
+  teamALogo      String?     @map("team_a_logo")
+  teamB          String      @map("team_b")
+  teamBLogo      String?     @map("team_b_logo")
+  scheduledAt    DateTime    @map("scheduled_at")
+  status         MatchStatus @default(UPCOMING)
+  oddsA          Float?      @map("odds_a")
+  oddsB          Float?      @map("odds_b")
+  winnerId       String?     @map("winner_id") // "a" | "b" | null (draw = cancelled)
+  scoreA         Int?        @map("score_a")  // maps score (e.g. 0 in a bo3)
+  scoreB         Int?        @map("score_b")  // maps score (e.g. 2 in a bo3)
+  bestOf         Int?        @map("best_of")  // number_of_games from PandaScore (e.g. 3 for bo3)
+  maxBet         Int         @default(10000) @map("max_bet") // cents: 10000 = 100.00 PB
+  bettingOpenUntil DateTime? @map("betting_open_until") // admin can open betting on LIVE events for a time window
+  rawData        Json?       @map("raw_data")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  tournamentRef  Tournament? @relation(fields: [tournamentId], references: [id])
+  bets           Bet[]
+
+  @@index([status])
+  @@index([game])
+  @@index([scheduledAt])
+  @@index([tournamentId])
+  @@map("events")
+}
+
+model Bet {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  eventId         String    @map("event_id")
+  amount          Int       // cents wagered
+  selection       String    // "a" | "b"
+  oddsAtPlacement Float     @map("odds_at_placement")
+  status          BetStatus @default(PENDING)
+  payout          Int?      // total return = amount + profit
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  user            User      @relation(fields: [userId], references: [id])
+  event           Event     @relation(fields: [eventId], references: [id])
+
+  @@index([userId])
+  @@index([eventId])
+  @@index([userId, createdAt])
+  @@map("bets")
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  room      String   // "en" | "ru"
+  content   String   @db.VarChar(120)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([room, createdAt])
+  @@map("chat_messages")
+}
+
+model Challenge {
+  id          String        @id @default(uuid())
+  type        ChallengeType
+  title       String
+  description String
+  reward      Int           // cents
+  criteria    Json          // e.g. {"action":"place_bet","count":3}
+  startsAt    DateTime      @map("starts_at")
+  expiresAt   DateTime      @map("expires_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  userChallenges UserChallenge[]
+
+  @@index([type, expiresAt])
+  @@map("challenges")
+}
+
+model UserChallenge {
+  id          String          @id @default(uuid())
+  userId      String          @map("user_id")
+  challengeId String          @map("challenge_id")
+  progress    Int             @default(0)
+  status      ChallengeStatus @default(ACTIVE)
+  completedAt DateTime?       @map("completed_at")
+  metadata    Json?           // e.g. {"countedEvents":["uuid1","uuid2"]} for deduplication
+
+  user        User            @relation(fields: [userId], references: [id])
+  challenge   Challenge       @relation(fields: [challengeId], references: [id])
+
+  @@unique([userId, challengeId])
+  @@map("user_challenges")
+}
+
+model Feedback {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  text      String   @db.VarChar(500)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@map("feedback")
+}
+
+model OutboxEvent {
+  id          String    @id @default(uuid())
+  type        String    // "event.finished" | "event.cancelled" | "user.replenish"
+  payload     Json
+  processed   Boolean   @default(false)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  processedAt DateTime? @map("processed_at")
+
+  @@index([processed, createdAt])
+  @@map("outbox_events")
+}
