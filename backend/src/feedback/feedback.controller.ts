@@ -8,10 +8,7 @@ export class FeedbackController {
   constructor(private feedbackService: FeedbackService) {}
 
   @Post()
-  create(
-    @CurrentUser('id') userId: string,
-    @Body() dto: CreateFeedbackDto,
-  ) {
+  create(@CurrentUser('id') userId: string, @Body() dto: CreateFeedbackDto) {
     return this.feedbackService.create(userId, dto.text);
   }
 
@@ -21,10 +18,7 @@ export class FeedbackController {
   }
 
   @Get()
-  getAll(
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
+  getAll(@Query('page') page?: string, @Query('limit') limit?: string) {
     return this.feedbackService.getAll(
       page ? parseInt(page, 10) : 1,
       limit ? parseInt(limit, 10) : 20,

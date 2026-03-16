@@ -1,8 +1,12 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { PrismaService } from '../prisma';
 import { PandascoreService } from './pandascore.service';
 import type { Event as EventModel, MatchStatus, Prisma } from '@prisma/client';
+
+const EVENTS_TTL = 30 * 1000; // 30s
 
 interface RawStream {
   main: boolean;
@@ -21,6 +25,7 @@ export class EventsService {
     private prisma: PrismaService,
     private pandascore: PandascoreService,
     private config: ConfigService,
+    @Inject(CACHE_MANAGER) private cache: Cache,
   ) {
     // Global default max bet per user per event (cents). Admin can override per event.
     this.defaultMaxBet = this.config.get<number>('GLOBAL_MAX_BET', 10000);
@@ -33,6 +38,10 @@ export class EventsService {
     limit?: number;
   }) {
     const { game, status, page = 1, limit = 20 } = params;
+    const cacheKey = `events:list:${game ?? 'all'}:${status ?? 'all'}:${page}:${limit}`;
+    const cached = await this.cache.get(cacheKey);
+    if (cached) return cached;
+
     const where: Prisma.EventWhereInput = {};
     if (game) where.game = game;
     if (status) where.status = status;
@@ -47,19 +56,31 @@ export class EventsService {
       this.prisma.event.count({ where }),
     ]);
 
-    return {
+    const result = {
       data: events.map((e) => this.formatEvent(e)),
       total,
       page,
       limit,
       totalPages: Math.ceil(total / limit),
     };
+    await this.cache.set(cacheKey, result, EVENTS_TTL);
+    return result;
   }
 
   async getEvent(id: string) {
+    const cacheKey = `events:detail:${id}`;
+    const cached = await this.cache.get(cacheKey);
+    if (cached) return cached;
+
     const event = await this.prisma.event.findUnique({ where: { id } });
     if (!event) throw new NotFoundException('Event not found');
-    return this.formatEvent(event);
+    const result = this.formatEvent(event);
+    await this.cache.set(cacheKey, result, EVENTS_TTL);
+    return result;
+  }
+
+  async invalidateEventCache(id: string) {
+    await this.cache.del(`events:detail:${id}`);
   }
 
   async syncTournaments() {
@@ -278,8 +299,10 @@ export class EventsService {
 
         // Extract map scores from results
         const results = match.results || [];
-        const scoreA = results.find((r) => r.team_id === teamAId)?.score ?? null;
-        const scoreB = results.find((r) => r.team_id !== teamAId)?.score ?? null;
+        const scoreA =
+          results.find((r) => r.team_id === teamAId)?.score ?? null;
+        const scoreB =
+          results.find((r) => r.team_id !== teamAId)?.score ?? null;
 
         // If it's a draw (equal scores), treat as cancelled
         const isDraw =
@@ -289,7 +312,13 @@ export class EventsService {
           await this.cancelEvent(event.id);
           cancelled++;
         } else {
-          await this.finishEvent(event.id, winnerId, scoreA, scoreB, match.number_of_games);
+          await this.finishEvent(
+            event.id,
+            winnerId,
+            scoreA,
+            scoreB,
+            match.number_of_games,
+          );
           finished++;
         }
       } else if (match.status === 'canceled') {
@@ -314,7 +343,13 @@ export class EventsService {
     await this.prisma.$transaction([
       this.prisma.event.update({
         where: { id: eventId },
-        data: { status: 'FINISHED', winnerId, scoreA, scoreB, bestOf: bestOf ?? null },
+        data: {
+          status: 'FINISHED',
+          winnerId,
+          scoreA,
+          scoreB,
+          bestOf: bestOf ?? null,
+        },
       }),
       this.prisma.outboxEvent.create({
         data: {

@@ -57,6 +57,9 @@ export class AdminService {
 
     this.logger.log(`Admin updated event ${id}: ${JSON.stringify(dto)}`);
 
+    // Bust the detail cache so the admin sees the updated event immediately
+    await this.eventsService.invalidateEventCache(id);
+
     // Return the formatted event (with streams, league, etc.)
     return this.eventsService.getEvent(id);
   }

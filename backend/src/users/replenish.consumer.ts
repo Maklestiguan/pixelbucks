@@ -38,7 +38,9 @@ export class ReplenishConsumer implements OnModuleInit {
               ch.ack(msg);
             } catch (err: unknown) {
               const message = err instanceof Error ? err.message : String(err);
-              this.logger.error(`Error processing replenish message: ${message}`);
+              this.logger.error(
+                `Error processing replenish message: ${message}`,
+              );
               ch.nack(msg, false, true);
             }
           },

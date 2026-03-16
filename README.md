@@ -2,6 +2,8 @@
 
 Virtual-money esports betting platform for Dota 2 and CS2. No real money — just PixelBucks (PB) for fun.
 
+![Events list](./static/events.png)
+
 ## Features
 
 - **Esports Betting** — Browse upcoming Dota 2 & CS2 matches synced from PandaScore, place bets with virtual currency

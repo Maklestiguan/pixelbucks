@@ -130,13 +130,18 @@ describe('PixelBucks E2E', () => {
           pandascoreId: 99999,
           game: 'dota2',
           tournament: 'Test International',
+          league: 'Test League',
           teamA: 'Team Alpha',
+          teamALogo: '',
           teamB: 'Team Beta',
+          teamBLogo: '',
           scheduledAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // tomorrow
           status: 'UPCOMING',
           oddsA: 1.85,
           oddsB: 2.1,
+          bestOf: 3,
           maxBet: 10000,
+          rawData: {},
         },
       });
       eventId = event.id;
@@ -147,13 +152,18 @@ describe('PixelBucks E2E', () => {
           pandascoreId: 99998,
           game: 'cs2',
           tournament: 'Test Major',
+          league: 'Test League',
           teamA: 'Team Gamma',
+          teamALogo: '',
           teamB: 'Team Delta',
+          teamBLogo: '',
           scheduledAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
           status: 'UPCOMING',
           oddsA: 1.5,
           oddsB: 2.8,
+          bestOf: 3,
           maxBet: 5000,
+          rawData: {},
         },
       });
     });
@@ -354,13 +364,18 @@ describe('PixelBucks E2E', () => {
           pandascoreId: 99997,
           game: 'dota2',
           tournament: 'Test Live Tournament',
+          league: 'Test League',
           teamA: 'Team Live A',
           teamB: 'Team Live B',
+          teamALogo: '',
+          teamBLogo: '',
           scheduledAt: new Date(Date.now() - 60 * 60 * 1000), // 1 hour ago
           status: 'LIVE',
           oddsA: 1.75,
           oddsB: 2.2,
+          bestOf: 3,
           maxBet: 10000,
+          rawData: {},
         },
       });
       liveEventId = liveEvent.id;
@@ -386,13 +401,18 @@ describe('PixelBucks E2E', () => {
           pandascoreId: 99996,
           game: 'cs2',
           tournament: 'Test Loss Tournament',
+          league: 'Test League',
           teamA: 'Team Win',
+          teamALogo: '',
           teamB: 'Team Lose',
+          teamBLogo: '',
           scheduledAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
           status: 'UPCOMING',
           oddsA: 1.5,
           oddsB: 2.8,
+          bestOf: 3,
           maxBet: 10000,
+          rawData: {},
         },
       });
       lossEventId = event.id;
@@ -554,6 +574,78 @@ describe('PixelBucks E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ oddsA: 0.5 })
         .expect(400);
+    });
+  });
+
+  describe('Race Condition - Concurrent Bets', () => {
+    let raceToken: string;
+    let raceEventId: string;
+
+    beforeAll(async () => {
+      // Fresh user with default 1000 PB (100000 cents) balance
+      const res = await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({ username: 'racetestuser', password: 'password123' })
+        .expect(201);
+      raceToken = res.body.accessToken;
+
+      // maxBet is intentionally high (2000 PB) so only the balance check gates bets
+      const event = await prisma.event.create({
+        data: {
+          pandascoreId: 88888,
+          game: 'dota2',
+          tournament: 'Race Condition Tournament',
+          league: 'Test League',
+          teamA: 'Race Team A',
+          teamALogo: '',
+          teamB: 'Race Team B',
+          teamBLogo: '',
+          scheduledAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          status: 'UPCOMING',
+          oddsA: 1.85,
+          oddsB: 2.1,
+          bestOf: 3,
+          maxBet: 200000,
+          rawData: {},
+        },
+      });
+      raceEventId = event.id;
+    });
+
+    it('should never produce a negative balance under concurrent bets', async () => {
+      // User balance: 100000 cents (1000 PB)
+      // 5 concurrent bets of 30000 cents (300 PB) each
+      // Without the fix: all 5 could pass the balance check before any decrement → balance = -50 PB
+      // With atomic updateMany WHERE balance >= amount: at most 3 succeed (3 × 300 = 900 ≤ 1000)
+      const BET_AMOUNT = 30000;
+      const NUM_BETS = 4;
+
+      const results = await Promise.all(
+        Array.from({ length: NUM_BETS }, () =>
+          request(app.getHttpServer())
+            .post('/api/bets')
+            .set('Authorization', `Bearer ${raceToken}`)
+            .send({ eventId: raceEventId, selection: 'a', amount: BET_AMOUNT }),
+        ),
+      );
+
+      const succeeded = results.filter((r) => r.status === 201).length;
+      const failed = results.filter((r) => r.status === 400).length;
+      expect(succeeded + failed).toBe(NUM_BETS);
+
+      const userRes = await request(app.getHttpServer())
+        .get('/api/users/me')
+        .set('Authorization', `Bearer ${raceToken}`)
+        .expect(200);
+
+      const finalBalance = parseFloat(userRes.body.balance);
+
+      // Balance must never be negative
+      expect(finalBalance).toBeGreaterThanOrEqual(0);
+
+      // Balance must be exactly initial minus the sum of successful bets
+      const expectedBalance = (100000 - succeeded * BET_AMOUNT) / 100;
+      expect(finalBalance).toBe(expectedBalance);
     });
   });
 });

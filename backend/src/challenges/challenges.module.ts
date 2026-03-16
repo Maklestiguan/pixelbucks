@@ -3,10 +3,7 @@ import { BullModule, InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ChallengesController } from './challenges.controller';
 import { ChallengesService } from './challenges.service';
-import {
-  ChallengesProcessor,
-  CHALLENGES_QUEUE,
-} from './challenges.processor';
+import { ChallengesProcessor, CHALLENGES_QUEUE } from './challenges.processor';
 
 @Module({
   imports: [BullModule.registerQueue({ name: CHALLENGES_QUEUE })],
@@ -17,9 +14,7 @@ import {
 export class ChallengesModule implements OnModuleInit {
   private readonly logger = new Logger(ChallengesModule.name);
 
-  constructor(
-    @InjectQueue(CHALLENGES_QUEUE) private challengesQueue: Queue,
-  ) {}
+  constructor(@InjectQueue(CHALLENGES_QUEUE) private challengesQueue: Queue) {}
 
   async onModuleInit() {
     const existing = await this.challengesQueue.getRepeatableJobs();

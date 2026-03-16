@@ -3,9 +3,14 @@ import {
   Logger,
   NotFoundException,
   ForbiddenException,
+  Inject,
 } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { PrismaService } from '../prisma';
 import { UpdateProfileDto } from './dto';
+
+const LEADERBOARD_TTL = 60 * 1000; // 60s
 
 const REPLENISH_AMOUNT = 50000; // 500.00 PB in cents
 const REPLENISH_INTERVAL_DAYS = 7;
@@ -14,7 +19,10 @@ const REPLENISH_INTERVAL_DAYS = 7;
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(CACHE_MANAGER) private cache: Cache,
+  ) {}
 
   async getMe(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -155,6 +163,10 @@ export class UsersService {
 
   /** Leaderboard: top users by totalProfit (public stats only) */
   async getLeaderboard(limit = 20) {
+    const cacheKey = `users:leaderboard:${limit}`;
+    const cached = await this.cache.get(cacheKey);
+    if (cached) return cached;
+
     const users = await this.prisma.user.findMany({
       where: { statsPublic: true },
       orderBy: { totalProfit: 'desc' },
@@ -167,12 +179,14 @@ export class UsersService {
       },
     });
 
-    return users.map((u) => ({
+    const result = users.map((u) => ({
       id: u.id,
       username: u.username,
       totalProfit: this.formatBalance(u.totalProfit),
       totalBets: u._count.bets,
     }));
+    await this.cache.set(cacheKey, result, LEADERBOARD_TTL);
+    return result;
   }
 
   private formatBalance(cents: number): string {

@@ -3,6 +3,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
+import { CacheModule } from '@nestjs/cache-manager';
+import { createKeyv } from '@keyv/redis';
 import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './prisma';
 import { AuthModule } from './auth/auth.module';
@@ -28,6 +30,17 @@ import { RolesGuard } from './common/guards/roles.guard';
       },
     ]),
     ScheduleModule.forRoot(),
+    CacheModule.registerAsync({
+      isGlobal: true,
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        stores: [
+          createKeyv(config.get<string>('REDIS_URL', 'redis://localhost:6777')),
+        ],
+        ttl: 30 * 1000, // 30s default TTL (milliseconds)
+      }),
+    }),
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

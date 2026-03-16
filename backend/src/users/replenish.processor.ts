@@ -35,9 +35,7 @@ export class ReplenishProcessor extends WorkerHost {
       });
     }
 
-    this.logger.log(
-      `Created ${userIds.length} replenishment outbox events`,
-    );
+    this.logger.log(`Created ${userIds.length} replenishment outbox events`);
     return { replenished: userIds.length };
   }
 }

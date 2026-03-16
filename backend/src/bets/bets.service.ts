@@ -61,23 +61,20 @@ export class BetsService {
         );
       }
 
-      // Check user balance
-      const user = await tx.user.findUnique({ where: { id: userId } });
-      if (!user || user.balance < dto.amount) {
-        throw new BadRequestException('Insufficient balance');
-      }
-
       // Snapshot odds
       const odds = dto.selection === 'a' ? event.oddsA : event.oddsB;
       if (!odds) {
         throw new BadRequestException('Odds not available for this selection');
       }
 
-      // Deduct balance and create bet
-      await tx.user.update({
-        where: { id: userId },
+      // Atomically deduct balance only if sufficient — prevents negative balance under concurrent bets
+      const deducted = await tx.user.updateMany({
+        where: { id: userId, balance: { gte: dto.amount } },
         data: { balance: { decrement: dto.amount } },
       });
+      if (deducted.count === 0) {
+        throw new BadRequestException('Insufficient balance');
+      }
 
       const bet = await tx.bet.create({
         data: {
@@ -120,7 +117,7 @@ export class BetsService {
     params: { status?: string; page?: number; limit?: number },
   ) {
     const { status, page = 1, limit = 20 } = params;
-    const where: any = { userId };
+    const where: { [key: string]: string } = { userId };
     if (status) where.status = status;
 
     const [bets, total] = await Promise.all([
@@ -219,9 +216,7 @@ export class BetsService {
 
     // Track win_bet challenge progress (once per user per event)
     for (const uid of winnerUserIds) {
-      this.challengesService
-        .trackProgress(uid, 'win_bet')
-        .catch(() => {});
+      this.challengesService.trackProgress(uid, 'win_bet').catch(() => {});
     }
   }
 

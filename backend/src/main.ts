@@ -7,6 +7,9 @@ import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Disable ETag generation to prevent 304 "Not Modified" stale-data responses
+  app.getHttpAdapter().getInstance().set('etag', false);
+
   const configService = app.get(ConfigService);
 
   app.enableCors({
