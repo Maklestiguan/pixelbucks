@@ -164,6 +164,7 @@ model UserChallenge {
   progress    Int             @default(0)
   status      ChallengeStatus @default(ACTIVE)
   completedAt DateTime?       @map("completed_at")
+  metadata    Json?           // e.g. {"countedEvents":["uuid1","uuid2"]} for deduplication
 
   user        User            @relation(fields: [userId], references: [id])
   challenge   Challenge       @relation(fields: [challengeId], references: [id])

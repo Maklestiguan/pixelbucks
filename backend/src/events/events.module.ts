@@ -6,32 +6,60 @@ import { EventsController } from './events.controller';
 import { EventsService } from './events.service';
 import { PandascoreService } from './pandascore.service';
 import {
-  EventsSyncProcessor,
-  EVENTS_SYNC_QUEUE,
+  TOURNAMENTS_QUEUE,
+  MATCHES_QUEUE,
+  LIVE_QUEUE,
+  RESULTS_QUEUE,
+  TournamentsSyncProcessor,
+  MatchesSyncProcessor,
+  LiveDetectProcessor,
+  ResultsCheckProcessor,
 } from './events-sync.processor';
 
 @Module({
   imports: [
     ConfigModule,
-    BullModule.registerQueue({ name: EVENTS_SYNC_QUEUE }),
+    BullModule.registerQueue(
+      { name: TOURNAMENTS_QUEUE },
+      { name: MATCHES_QUEUE },
+      { name: LIVE_QUEUE },
+      { name: RESULTS_QUEUE },
+    ),
   ],
   controllers: [EventsController],
-  providers: [EventsService, PandascoreService, EventsSyncProcessor],
+  providers: [
+    EventsService,
+    PandascoreService,
+    TournamentsSyncProcessor,
+    MatchesSyncProcessor,
+    LiveDetectProcessor,
+    ResultsCheckProcessor,
+  ],
   exports: [EventsService],
 })
 export class EventsModule implements OnModuleInit {
   private readonly logger = new Logger(EventsModule.name);
 
   constructor(
-    @InjectQueue(EVENTS_SYNC_QUEUE) private syncQueue: Queue,
+    @InjectQueue(TOURNAMENTS_QUEUE) private tournamentsQueue: Queue,
+    @InjectQueue(MATCHES_QUEUE) private matchesQueue: Queue,
+    @InjectQueue(LIVE_QUEUE) private liveQueue: Queue,
+    @InjectQueue(RESULTS_QUEUE) private resultsQueue: Queue,
     private config: ConfigService,
   ) {}
 
   async onModuleInit() {
     // Remove existing repeatable jobs to avoid duplicates
-    const repeatableJobs = await this.syncQueue.getRepeatableJobs();
-    for (const job of repeatableJobs) {
-      await this.syncQueue.removeRepeatableByKey(job.key);
+    for (const queue of [
+      this.tournamentsQueue,
+      this.matchesQueue,
+      this.liveQueue,
+      this.resultsQueue,
+    ]) {
+      const jobs = await queue.getRepeatableJobs();
+      for (const job of jobs) {
+        await queue.removeRepeatableByKey(job.key);
+      }
     }
 
     const tournamentsInterval = this.config.get<number>(
@@ -56,9 +84,8 @@ export class EventsModule implements OnModuleInit {
       removeOnFail: { count: 50 },
     };
 
-    // Fetch tier S/A tournaments from PandaScore, upsert to DB
-    await this.syncQueue.add(
-      'sync-tournaments',
+    await this.tournamentsQueue.add(
+      'sync',
       {},
       {
         repeat: { every: tournamentsInterval, immediately: true },
@@ -66,9 +93,8 @@ export class EventsModule implements OnModuleInit {
       },
     );
 
-    // Fetch upcoming matches, filter by synced tournament IDs, upsert to DB
-    await this.syncQueue.add(
-      'sync-upcoming-matches',
+    await this.matchesQueue.add(
+      'sync',
       {},
       {
         repeat: { every: matchesInterval, immediately: true },
@@ -76,9 +102,8 @@ export class EventsModule implements OnModuleInit {
       },
     );
 
-    // Check PandaScore for running matches, flip UPCOMING → LIVE
-    await this.syncQueue.add(
-      'detect-live-matches',
+    await this.liveQueue.add(
+      'detect',
       {},
       {
         repeat: { every: liveInterval, immediately: true },
@@ -86,9 +111,8 @@ export class EventsModule implements OnModuleInit {
       },
     );
 
-    // Poll finished/cancelled matches, write to outbox for bet resolution
-    await this.syncQueue.add(
-      'check-match-results',
+    await this.resultsQueue.add(
+      'check',
       {},
       {
         repeat: { every: resultsInterval, immediately: true },

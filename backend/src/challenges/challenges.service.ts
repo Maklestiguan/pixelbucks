@@ -2,28 +2,42 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma';
 import type { ChallengeType } from '@prisma/client';
 
+interface ChallengeCriteria {
+  action: string;
+  count: number;
+  game?: string; // if set, only bets on this game count
+}
+
 interface ChallengeTemplate {
   type: ChallengeType;
   title: string;
   description: string;
   reward: number; // cents
-  criteria: { action: string; count: number };
+  criteria: ChallengeCriteria;
 }
 
 const DAILY_TEMPLATES: ChallengeTemplate[] = [
   {
     type: 'DAILY',
     title: 'Place 3 Bets',
-    description: 'Place 3 bets on any events today',
+    description:
+      'Place bets on 3 different events today (multiple bets on the same event count as 1)',
     reward: 5000, // 50 PB
     criteria: { action: 'place_bet', count: 3 },
   },
   {
     type: 'DAILY',
-    title: 'Bet on 2 Different Games',
-    description: 'Place bets on both Dota 2 and CS2 events',
+    title: 'Bet on 3 Dota 2 Events',
+    description: 'Place bets on 3 different Dota 2 events today',
     reward: 7500, // 75 PB
-    criteria: { action: 'bet_different_games', count: 2 },
+    criteria: { action: 'place_bet', game: 'dota2', count: 3 },
+  },
+  {
+    type: 'DAILY',
+    title: 'Bet on 3 CS2 Events',
+    description: 'Place bets on 3 different CS2 events today',
+    reward: 7500, // 75 PB
+    criteria: { action: 'place_bet', game: 'cs2', count: 3 },
   },
   {
     type: 'DAILY',
@@ -118,11 +132,15 @@ export class ChallengesService {
     }));
   }
 
-  /** Increment progress on challenges matching an action for a user */
+  /** Increment progress on challenges matching an action for a user.
+   *  For place_bet actions, pass eventId to deduplicate (multiple bets on same event = 1 progress).
+   *  Pass game to match game-specific challenges.
+   */
   async trackProgress(
     userId: string,
     action: string,
     increment = 1,
+    meta?: { game?: string; eventId?: string },
   ) {
     const now = new Date();
 
@@ -140,8 +158,21 @@ export class ChallengesService {
     });
 
     for (const uc of userChallenges) {
-      const criteria = uc.challenge.criteria as { action: string; count: number };
+      const criteria = uc.challenge.criteria as ChallengeCriteria;
       if (criteria.action !== action) continue;
+
+      // Skip game-specific challenges if the game doesn't match
+      if (criteria.game && meta?.game && criteria.game !== meta.game) continue;
+
+      // Deduplicate by eventId: multiple bets on the same event count as 1
+      let updatedMetadata: { countedEvents: string[] } | undefined;
+      if (meta?.eventId) {
+        const countedEvents =
+          (uc.metadata as { countedEvents?: string[] } | null)?.countedEvents ??
+          [];
+        if (countedEvents.includes(meta.eventId)) continue;
+        updatedMetadata = { countedEvents: [...countedEvents, meta.eventId] };
+      }
 
       const newProgress = uc.progress + increment;
       const completed = newProgress >= criteria.count;
@@ -150,6 +181,7 @@ export class ChallengesService {
         where: { id: uc.id },
         data: {
           progress: newProgress,
+          ...(updatedMetadata ? { metadata: updatedMetadata } : {}),
           ...(completed
             ? { status: 'COMPLETED', completedAt: new Date() }
             : {}),
@@ -209,9 +241,7 @@ export class ChallengesService {
 
     if (!existingWeekly) {
       const template =
-        WEEKLY_TEMPLATES[
-          Math.floor(Math.random() * WEEKLY_TEMPLATES.length)
-        ];
+        WEEKLY_TEMPLATES[Math.floor(Math.random() * WEEKLY_TEMPLATES.length)];
       const startsAt = new Date(now);
       startsAt.setHours(0, 0, 0, 0);
       const weekEnd = new Date(startsAt);

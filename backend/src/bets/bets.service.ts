@@ -97,8 +97,10 @@ export class BetsService {
     });
 
     // Track challenge progress (fire-and-forget, don't block the bet response)
+    // eventId deduplication: multiple bets on the same event count as 1 toward place_bet challenges
+    const betMeta = { game: result.game, eventId: dto.eventId };
     this.challengesService
-      .trackProgress(userId, 'place_bet')
+      .trackProgress(userId, 'place_bet', 1, betMeta)
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.warn(`Challenge tracking failed: ${msg}`);
