@@ -1,11 +1,33 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma';
 import type { ChallengeType } from '@prisma/client';
+import { InputJsonValue } from '@prisma/client/runtime/client';
 
 interface ChallengeCriteria {
   action: string;
   count: number;
   game?: string; // if set, only bets on this game count
+  [key: string]: unknown; // satisfy Prisma's InputJsonObject index signature
+}
+
+function parseCriteria(v: unknown): ChallengeCriteria | null {
+  if (
+    typeof v === 'object' &&
+    v !== null &&
+    !Array.isArray(v) &&
+    typeof (v as Record<string, unknown>).action === 'string' &&
+    typeof (v as Record<string, unknown>).count === 'number'
+  ) {
+    return v as ChallengeCriteria;
+  }
+  return null;
+}
+
+function parseMetadata(v: unknown): { countedEvents?: string[] } | null {
+  if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
+    return v as { countedEvents?: string[] };
+  }
+  return null;
 }
 
 interface ChallengeTemplate {
@@ -158,8 +180,8 @@ export class ChallengesService {
     });
 
     for (const uc of userChallenges) {
-      const criteria = uc.challenge.criteria as ChallengeCriteria;
-      if (criteria.action !== action) continue;
+      const criteria = parseCriteria(uc.challenge.criteria);
+      if (!criteria || criteria.action !== action) continue;
 
       // Skip game-specific challenges if the game doesn't match
       if (criteria.game && meta?.game && criteria.game !== meta.game) continue;
@@ -167,9 +189,7 @@ export class ChallengesService {
       // Deduplicate by eventId: multiple bets on the same event count as 1
       let updatedMetadata: { countedEvents: string[] } | undefined;
       if (meta?.eventId) {
-        const countedEvents =
-          (uc.metadata as { countedEvents?: string[] } | null)?.countedEvents ??
-          [];
+        const countedEvents = parseMetadata(uc.metadata)?.countedEvents ?? [];
         if (countedEvents.includes(meta.eventId)) continue;
         updatedMetadata = { countedEvents: [...countedEvents, meta.eventId] };
       }
@@ -226,7 +246,7 @@ export class ChallengesService {
           title: template.title,
           description: template.description,
           reward: template.reward,
-          criteria: template.criteria,
+          criteria: template.criteria as InputJsonValue,
           startsAt,
           expiresAt: todayEnd,
         },
@@ -254,7 +274,7 @@ export class ChallengesService {
           title: template.title,
           description: template.description,
           reward: template.reward,
-          criteria: template.criteria,
+          criteria: template.criteria as InputJsonValue,
           startsAt,
           expiresAt: weekEnd,
         },
