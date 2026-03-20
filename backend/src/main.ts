@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
+import compression from 'compression';
 import { AppModule } from './app.module';
 import { FastestValidatorPipe } from './common/pipes/validation.pipe';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
@@ -9,6 +10,9 @@ async function bootstrap() {
 
   // Disable ETag generation to prevent 304 "Not Modified" stale-data responses
   app.getHttpAdapter().getInstance().set('etag', false);
+
+  // Enable gzip/deflate response compression
+  app.use(compression());
 
   const configService = app.get(ConfigService);
 
