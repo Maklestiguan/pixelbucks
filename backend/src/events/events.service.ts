@@ -402,6 +402,7 @@ export class EventsService {
     return {
       id: event.id,
       pandascoreId: event.pandascoreId,
+      hltvId: event.hltvId,
       game: event.game,
       tournament: event.tournament,
       league: event.league || null,

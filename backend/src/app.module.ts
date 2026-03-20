@@ -18,6 +18,7 @@ import { ChatModule } from './chat/chat.module';
 import { AdminModule } from './admin/admin.module';
 import { ChallengesModule } from './challenges/challenges.module';
 import { FeedbackModule } from './feedback/feedback.module';
+import { HltvModule } from './hltv';
 import { RolesGuard } from './common/guards/roles.guard';
 
 @Module({
@@ -68,6 +69,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     AdminModule,
     ChallengesModule,
     FeedbackModule,
+    HltvModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

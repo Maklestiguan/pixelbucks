@@ -75,6 +75,7 @@ model Tournament {
 model Event {
   id             String      @id @default(uuid())
   pandascoreId   Int         @unique @map("pandascore_id")
+  hltvId         Int?        @unique @map("hltv_id")
   game           String      // "dota2" | "cs2"
   tournament     String      // display name for backward compat
   tournamentId   String?     @map("tournament_id")
