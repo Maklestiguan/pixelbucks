@@ -1,11 +1,15 @@
-import { Controller, Get, Patch, Param, Body } from '@nestjs/common';
+import { Controller, Get, Patch, Param, Body, Query } from '@nestjs/common';
 import { UsersService } from './users.service';
+import { BalanceAuditService } from '../balance-audit';
 import { UpdateProfileDto } from './dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @Controller('api/users')
 export class UsersController {
-  constructor(private usersService: UsersService) {}
+  constructor(
+    private usersService: UsersService,
+    private balanceAudit: BalanceAuditService,
+  ) {}
 
   @Get('me')
   getMe(@CurrentUser('id') userId: string) {
@@ -20,6 +24,17 @@ export class UsersController {
   @Get('leaderboard')
   getLeaderboard() {
     return this.usersService.getLeaderboard();
+  }
+
+  @Get('me/balance-history')
+  getMyBalanceHistory(
+    @CurrentUser('id') userId: string,
+    @Query('page') page?: string,
+  ) {
+    return this.balanceAudit.getUserAuditLog(
+      userId,
+      page ? parseInt(page, 10) : 1,
+    );
   }
 
   @Get(':id/stats')

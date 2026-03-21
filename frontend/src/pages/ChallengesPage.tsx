@@ -67,7 +67,7 @@ function ChallengeCard({ challenge }: { challenge: UserChallengeView }) {
       <div className="mt-3">
         <div className="flex items-center justify-between text-xs mb-1">
           <span className="text-gray-400">
-            {progress} / {challenge.criteria.count}
+            {formatBalance(progress)} / {formatBalance(challenge.criteria.count)}
           </span>
           {isCompleted && (
             <span className="text-green-400 font-medium">Completed</span>

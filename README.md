@@ -7,12 +7,14 @@ Virtual-money esports betting platform for Dota 2 and CS2. No real money — jus
 ## Features
 
 - **Esports Betting** — Browse upcoming Dota 2 & CS2 matches synced from PandaScore, place bets with virtual currency
-- **Live Match Tracking** — Automatic status updates (upcoming → live → finished), embedded Twitch streams on event pages
-- **Wallet System** — Start with 1,000 PB, weekly replenishment of 500 PB, profit/loss tracking
+- **CS2 Odds from HLTV** — Real odds scraped from HLTV (GGBet, 1xbet, Thunderpick, bcgame averaged), with proxy support for geo-restricted regions
+- **Live Match Tracking** — Automatic status updates (upcoming → live → finished), embedded Twitch streams, HLTV match links
+- **Real-time Updates** — Socket.IO pushes for odds changes, match status, and balance updates — no page refresh needed
+- **Wallet System** — Start with 1,000 PB, weekly replenishment of 500 PB, full balance audit trail with history
 - **Real-time Chat** — Socket.IO chat with English and Russian rooms, emoji support, URL image embeds
-- **Challenges** — Daily and weekly challenges with PB rewards
-- **Leaderboard** — Top bettors ranked by balance
-- **Admin Panel** — Manage odds, users, balances, and view platform stats
+- **Challenges** — Daily and weekly challenges with PB rewards, async progress tracking
+- **Leaderboard** — Top bettors ranked by profit
+- **Admin Panel** — Manage odds, users, balances, view platform stats, job schedules, balance audit, and feedback
 - **Feedback System** — Users can submit feedback (3 per week, 500 char limit)
 
 ## Tech Stack
@@ -21,10 +23,11 @@ Virtual-money esports betting platform for Dota 2 and CS2. No real money — jus
 |-------|------|
 | Backend | NestJS 11, TypeScript, Prisma 7, PostgreSQL |
 | Frontend | React 19, TypeScript, Vite 8, Tailwind CSS 4 |
-| Messaging | RabbitMQ (event-driven bet resolution via outbox pattern) |
-| Jobs | BullMQ + Redis (PandaScore sync, challenges, replenishment) |
-| Chat | Socket.IO |
-| Data | PandaScore API (free tier) |
+| Messaging | RabbitMQ (outbox pattern, bet resolution, auditing, notifications) |
+| Jobs | BullMQ + Redis (PandaScore sync, HLTV odds, challenges, replenishment) |
+| Real-time | Socket.IO (chat rooms, odds/status/balance push) |
+| Data | PandaScore API (events & results) + HLTV scraper (CS2 odds) |
+| Caching | Redis via cache-manager (events list, leaderboard) |
 
 ## Quick Start
 
@@ -83,6 +86,9 @@ Visit `http://localhost:5173`, register an account, and start betting!
 | `THROTTLE_TTL` | Rate limit window (ms) | `60000` |
 | `THROTTLE_LIMIT` | Max requests per window | `60` |
 | `GLOBAL_MAX_BET` | Max bet in cents | `10000` |
+| `HLTV_ENABLED` | Enable HLTV odds scraping | `true` |
+| `HLTV_PROXY_ENABLED` | Enable proxy for HLTV requests | `true` |
+| `HLTV_PROXY_LIST` | Comma-separated proxy list (host:port) | — |
 | `PORT` | Backend port | `3000` |
 
 ## Production Deployment
@@ -112,38 +118,46 @@ See [DEPLOY.md](DEPLOY.md) for detailed deployment options (managed services or 
 ```
 backend/
   src/
-    auth/          — Register, login, JWT guards
-    users/         — Profile, stats, replenishment
-    events/        — PandaScore sync, match listing
-    bets/          — Bet placement & resolution
-    chat/          — WebSocket gateway
-    challenges/    — Daily/weekly challenges
-    admin/         — User & event management
-    feedback/      — User feedback
-    prisma/        — Database service
-    rabbitmq/      — Message broker
-    outbox/        — Outbox pattern processor
-    validations/   — fastest-validator infrastructure
+    auth/           — Register, login, JWT guards
+    users/          — Profile, stats, replenishment consumer
+    events/         — PandaScore sync, Socket.IO gateway, balance notify consumer
+    bets/           — Bet placement, resolution consumer, per-bet update consumer
+    balance-audit/  — Balance audit trail (global service + consumer)
+    hltv/           — HLTV odds integration (sync, mapping, proxy)
+    hltv-lib/       — HLTV scraper library (vendored source)
+    chat/           — WebSocket chat gateway
+    challenges/     — Daily/weekly challenges + progress consumer
+    admin/          — User/event management, job schedules, audit, feedback
+    feedback/       — User feedback
+    prisma/         — Database service
+    rabbitmq/       — Message broker
+    outbox/         — Outbox pattern processor
+    common/         — Decorators, guards, pipes, utils (pMap)
+    validations/    — fastest-validator infrastructure
   prisma/
-    schema.prisma  — Database schema (10 models)
-  test/
-    app.e2e-spec.ts    — integration tests
-    chat.e2e-spec.ts   — chat e2e tests
+    schema.prisma   — Database schema
+  test/             — Integration tests (auth, users, events, bets, chat)
 
 frontend/
   src/
-    pages/         — All page components
-    components/    — Layout, chat widget, error boundary, toasts
-    api/           — Axios API clients
-    context/       — Auth context
-    types/         — TypeScript types
+    pages/          — All page components
+    components/     — Layout, chat widget, error boundary, toasts
+    api/            — Axios API clients
+    context/        — Auth + Socket.IO providers
+    hooks/          — useAuth, useOddsUpdates
+    types/          — TypeScript types
 ```
 
 ## Tests
 
 ```bash
+# Integration tests
 cd backend
 npm run test:e2e
+
+# Unit tests
+npx jest --testPathPattern=src
 ```
 
-Runs integration tests covering auth, users, events, bets, bet resolution, profit tracking, and chat.
+**Integration tests** — auth, users, events, bets, bet resolution, profit tracking, chat.
+**Unit tests** — bet resolution logic, bet update consumer (won/lost/refund), HLTV proxy service.

@@ -4,6 +4,7 @@ import { getEvent } from "../api/events.api";
 import { placeBet } from "../api/bets.api";
 import { updateEvent } from "../api/admin.api";
 import { useAuthContext } from "../context/AuthContext";
+import { useOddsUpdates } from "../hooks/useOddsUpdates";
 import type { Event, EventStream } from "../types";
 
 function AdminOddsEditor({
@@ -474,6 +475,30 @@ export function EventDetailPage() {
       .catch(() => navigate("/"))
       .finally(() => setLoading(false));
   }, [id, navigate]);
+
+  const handleOddsUpdate = useCallback(
+    (data: { eventId: string; oddsA: number; oddsB: number }) => {
+      setEvent((prev) =>
+        prev && prev.id === data.eventId
+          ? { ...prev, oddsA: data.oddsA, oddsB: data.oddsB }
+          : prev,
+      );
+    },
+    [],
+  );
+
+  const handleStatusChange = useCallback(
+    (data: { eventId: string; status: string }) => {
+      setEvent((prev) =>
+        prev && prev.id === data.eventId
+          ? { ...prev, status: data.status as Event["status"] }
+          : prev,
+      );
+    },
+    [],
+  );
+
+  useOddsUpdates(handleOddsUpdate, handleStatusChange);
 
   const amountCents = Math.round(parseFloat(amountStr || "0") * 100);
   const selectedOdds =

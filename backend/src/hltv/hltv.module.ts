@@ -3,6 +3,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule, InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { HltvService } from './hltv.service';
+import { HltvProxyService } from './hltv-proxy.service';
+import { EventsModule } from '../events/events.module';
 import {
   HLTV_MAPPING_QUEUE,
   HLTV_ODDS_QUEUE,
@@ -13,12 +15,18 @@ import {
 @Module({
   imports: [
     ConfigModule,
+    EventsModule,
     BullModule.registerQueue(
       { name: HLTV_MAPPING_QUEUE },
       { name: HLTV_ODDS_QUEUE },
     ),
   ],
-  providers: [HltvService, HltvMappingProcessor, HltvOddsProcessor],
+  providers: [
+    HltvService,
+    HltvProxyService,
+    HltvMappingProcessor,
+    HltvOddsProcessor,
+  ],
   exports: [HltvService],
 })
 export class HltvModule implements OnModuleInit {

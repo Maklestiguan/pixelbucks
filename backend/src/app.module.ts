@@ -19,6 +19,7 @@ import { AdminModule } from './admin/admin.module';
 import { ChallengesModule } from './challenges/challenges.module';
 import { FeedbackModule } from './feedback/feedback.module';
 import { HltvModule } from './hltv';
+import { BalanceAuditModule } from './balance-audit';
 import { RolesGuard } from './common/guards/roles.guard';
 
 @Module({
@@ -61,6 +62,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     PrismaModule,
     RabbitMQModule,
     OutboxModule,
+    BalanceAuditModule,
     AuthModule,
     UsersModule,
     EventsModule,

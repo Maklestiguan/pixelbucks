@@ -52,6 +52,7 @@ model User {
   chatMessages     ChatMessage[]
   userChallenges   UserChallenge[]
   feedback         Feedback[]
+  balanceAudits    BalanceAudit[]
 
   @@map("users")
 }
@@ -187,6 +188,24 @@ model Feedback {
 
   @@index([userId, createdAt])
   @@map("feedback")
+}
+
+model BalanceAudit {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  amount         Int      // positive = credit, negative = debit (in cents)
+  balanceAfter   Int      @map("balance_after") // snapshot of balance after this change
+  reason         String   // "bet_placed" | "bet_won" | "bet_refund" | "admin_adjust" | "replenish" | "challenge_reward"
+  referenceId    String?  @map("reference_id") // betId, challengeId, etc.
+  note           String?  // optional admin note or description
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user           User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@index([reason])
+  @@map("balance_audits")
 }
 
 model OutboxEvent {

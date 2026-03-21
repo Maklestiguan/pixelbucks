@@ -51,10 +51,7 @@ export const getMatches =
     });
 
     const $ = HLTVScraper(
-      await fetchPage(
-        `https://www.hltv.org/matches?${query}`,
-        config.loadPage,
-      ),
+      await fetchPage(`https://www.hltv.org/matches?${query}`, config.loadPage),
     );
 
     // Build event lookup from filter popups

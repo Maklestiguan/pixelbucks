@@ -1,34 +1,43 @@
 import { Injectable, Inject, OnModuleInit, Logger } from '@nestjs/common';
 import type { AmqpConnectionManager } from 'amqp-connection-manager';
 import type { ConfirmChannel, ConsumeMessage } from 'amqplib';
-import { UsersService } from './users.service';
+import { ChallengesService } from './challenges.service';
 import { RABBITMQ_CONNECTION, QUEUES } from '../rabbitmq/rabbitmq.module';
 
-function isReplenishMessage(value: unknown): value is { userId: string } {
+interface ChallengeProgressMessage {
+  userId: string;
+  action: string;
+  amount?: number;
+  meta?: Record<string, unknown>;
+}
+
+function isChallengeProgressMessage(
+  value: unknown,
+): value is ChallengeProgressMessage {
   return (
     typeof value === 'object' &&
     value !== null &&
-    typeof (value as Record<string, unknown>).userId === 'string'
+    typeof (value as Record<string, unknown>).userId === 'string' &&
+    typeof (value as Record<string, unknown>).action === 'string'
   );
 }
 
 @Injectable()
-export class ReplenishConsumer implements OnModuleInit {
-  private readonly logger = new Logger(ReplenishConsumer.name);
+export class ChallengeProgressConsumer implements OnModuleInit {
+  private readonly logger = new Logger(ChallengeProgressConsumer.name);
 
   constructor(
     @Inject(RABBITMQ_CONNECTION) private connection: AmqpConnectionManager,
-    private usersService: UsersService,
+    private challengesService: ChallengesService,
   ) {}
 
   // eslint-disable-next-line @typescript-eslint/require-await
   async onModuleInit() {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const channel = this.connection.createChannel({
+    this.connection.createChannel({
       json: true,
       setup: async (ch: ConfirmChannel) => {
         await ch.consume(
-          QUEUES.USER_BALANCE,
+          QUEUES.CHALLENGE_PROGRESS,
           // eslint-disable-next-line @typescript-eslint/no-misused-promises
           async (msg: ConsumeMessage | null) => {
             if (!msg) return;
@@ -36,25 +45,26 @@ export class ReplenishConsumer implements OnModuleInit {
             try {
               const raw: unknown = JSON.parse(msg.content.toString());
 
-              if (!isReplenishMessage(raw)) {
+              if (!isChallengeProgressMessage(raw)) {
                 this.logger.error(
-                  `Invalid replenish message: ${msg.content.toString()}`,
+                  `Invalid challenge progress message: ${msg.content.toString()}`,
                 );
                 ch.nack(msg, false, false);
                 return;
               }
 
-              const routingKey = msg.fields.routingKey;
-
-              if (routingKey === 'user.replenish') {
-                await this.usersService.replenishUser(raw.userId);
-              }
+              await this.challengesService.trackProgress(
+                raw.userId,
+                raw.action,
+                raw.amount,
+                raw.meta,
+              );
 
               ch.ack(msg);
             } catch (err: unknown) {
               const message = err instanceof Error ? err.message : String(err);
               this.logger.error(
-                `Error processing replenish message: ${message}`,
+                `Error processing challenge progress: ${message}`,
               );
               ch.nack(msg, false, true);
             }
@@ -64,6 +74,6 @@ export class ReplenishConsumer implements OnModuleInit {
       },
     });
 
-    this.logger.log('Replenish consumer started');
+    this.logger.log('Challenge progress consumer started');
   }
 }

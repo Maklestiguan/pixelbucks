@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
+import { SocketProvider } from "./context/SocketContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ToastProvider } from "./components/Toast";
 import { Layout } from "./components/layout/Layout";
@@ -20,6 +21,7 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <AuthProvider>
+          <SocketProvider>
           <ToastProvider>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
@@ -38,6 +40,7 @@ export default function App() {
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </ToastProvider>
+          </SocketProvider>
         </AuthProvider>
       </BrowserRouter>
     </ErrorBoundary>

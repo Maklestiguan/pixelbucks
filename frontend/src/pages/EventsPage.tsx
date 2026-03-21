@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { getEvents } from "../api/events.api";
 import { placeBet } from "../api/bets.api";
 import { updateEvent } from "../api/admin.api";
 import { useAuthContext } from "../context/AuthContext";
+import { useOddsUpdates } from "../hooks/useOddsUpdates";
 import type { Event, EventStream } from "../types";
 
 const GAME_TABS = [
@@ -765,6 +766,34 @@ export function EventsPage() {
   const [activeMatchLabel, setActiveMatchLabel] = useState("");
 
   const isAdmin = user?.role === "ADMIN";
+
+  const handleOddsUpdate = useCallback(
+    (data: { eventId: string; oddsA: number; oddsB: number }) => {
+      setEvents((prev) =>
+        prev.map((e) =>
+          e.id === data.eventId
+            ? { ...e, oddsA: data.oddsA, oddsB: data.oddsB }
+            : e,
+        ),
+      );
+    },
+    [],
+  );
+
+  const handleStatusChange = useCallback(
+    (data: { eventId: string; status: string }) => {
+      setEvents((prev) =>
+        prev.map((e) =>
+          e.id === data.eventId
+            ? { ...e, status: data.status as Event["status"] }
+            : e,
+        ),
+      );
+    },
+    [],
+  );
+
+  useOddsUpdates(handleOddsUpdate, handleStatusChange);
 
   useEffect(() => {
     setLoading(true);

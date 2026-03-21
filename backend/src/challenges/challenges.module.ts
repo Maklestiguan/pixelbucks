@@ -4,11 +4,16 @@ import { Queue } from 'bullmq';
 import { ChallengesController } from './challenges.controller';
 import { ChallengesService } from './challenges.service';
 import { ChallengesProcessor, CHALLENGES_QUEUE } from './challenges.processor';
+import { ChallengeProgressConsumer } from './challenge-progress.consumer';
 
 @Module({
   imports: [BullModule.registerQueue({ name: CHALLENGES_QUEUE })],
   controllers: [ChallengesController],
-  providers: [ChallengesService, ChallengesProcessor],
+  providers: [
+    ChallengesService,
+    ChallengesProcessor,
+    ChallengeProgressConsumer,
+  ],
   exports: [ChallengesService],
 })
 export class ChallengesModule implements OnModuleInit {

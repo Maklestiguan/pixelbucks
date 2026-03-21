@@ -5,6 +5,8 @@ import type {
   AdminUserDetails,
   PlatformStats,
   PaginatedResponse,
+  BalanceAuditEntry,
+  FeedbackEntry,
 } from "../types";
 
 export async function updateEvent(
@@ -42,5 +44,46 @@ export async function adjustBalance(
 
 export async function getStats(): Promise<PlatformStats> {
   const { data } = await api.get<PlatformStats>("/admin/stats");
+  return data;
+}
+
+export async function getBalanceAudit(params?: {
+  page?: number;
+  limit?: number;
+  userId?: string;
+  reason?: string;
+}): Promise<PaginatedResponse<BalanceAuditEntry>> {
+  const { data } = await api.get<PaginatedResponse<BalanceAuditEntry>>(
+    "/admin/balance-audit",
+    { params },
+  );
+  return data;
+}
+
+export interface JobScheduleEntry {
+  queue: string;
+  label: string;
+  jobName: string | null;
+  interval: number | null;
+  cron: string | null;
+  next: string | null;
+  lastRun: string | null;
+  lastRunName: string | null;
+  isRunning: boolean;
+}
+
+export async function getJobSchedules(): Promise<JobScheduleEntry[]> {
+  const { data } = await api.get<JobScheduleEntry[]>("/admin/jobs");
+  return data;
+}
+
+export async function getFeedback(params?: {
+  page?: number;
+  limit?: number;
+}): Promise<PaginatedResponse<FeedbackEntry>> {
+  const { data } = await api.get<PaginatedResponse<FeedbackEntry>>(
+    "/admin/feedback",
+    { params },
+  );
   return data;
 }

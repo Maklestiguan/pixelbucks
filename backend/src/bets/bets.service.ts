@@ -1,7 +1,19 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
+import type { ChannelWrapper } from 'amqp-connection-manager';
 import { PrismaService } from '../prisma';
-import { ChallengesService } from '../challenges/challenges.service';
+import { BalanceAuditService } from '../balance-audit';
+import {
+  RABBITMQ_CHANNEL,
+  EXCHANGES,
+  ROUTING_KEYS,
+} from '../rabbitmq/rabbitmq.module';
 import { PlaceBetDto } from './dto';
+import { pMap } from '../common/utils/pmap';
 
 @Injectable()
 export class BetsService {
@@ -9,7 +21,8 @@ export class BetsService {
 
   constructor(
     private prisma: PrismaService,
-    private challengesService: ChallengesService,
+    private balanceAudit: BalanceAuditService,
+    @Inject(RABBITMQ_CHANNEL) private channel: ChannelWrapper,
   ) {}
 
   async placeBet(userId: string, dto: PlaceBetDto) {
@@ -100,21 +113,33 @@ export class BetsService {
       };
     });
 
-    // Track challenge progress (fire-and-forget, don't block the bet response)
-    // eventId deduplication: multiple bets on the same event count as 1 toward place_bet challenges
+    // Audit log via RabbitMQ (fire-and-forget)
+    this.balanceAudit
+      .log({
+        userId,
+        amount: -dto.amount,
+        reason: 'bet_placed',
+        referenceId: result.id,
+      })
+      .catch(() => {});
+
+    // Track challenge progress via RabbitMQ (fire-and-forget)
     const betMeta = { game: result.game, eventId: dto.eventId };
-    this.challengesService
-      .trackProgress(userId, 'place_bet', 1, betMeta)
-      .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err);
-        this.logger.warn(`Challenge tracking failed: ${msg}`);
-      });
-    this.challengesService
-      .trackProgress(userId, 'total_wagered', dto.amount)
-      .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err);
-        this.logger.warn(`Challenge tracking failed: ${msg}`);
-      });
+    this.channel
+      .publish(EXCHANGES.USERS, ROUTING_KEYS.CHALLENGE_PROGRESS, {
+        userId,
+        action: 'place_bet',
+        amount: 1,
+        meta: betMeta,
+      })
+      .catch(() => {});
+    this.channel
+      .publish(EXCHANGES.USERS, ROUTING_KEYS.CHALLENGE_PROGRESS, {
+        userId,
+        action: 'total_wagered',
+        amount: dto.amount,
+      })
+      .catch(() => {});
 
     return result;
   }
@@ -181,73 +206,81 @@ export class BetsService {
   }
 
   async resolveEventBets(eventId: string, winnerId: string) {
-    const winnerUserIds = await this.prisma.$transaction(async (tx) => {
-      const pendingBets = await tx.bet.findMany({
-        where: { eventId, status: 'PENDING' },
-      });
-
-      for (const bet of pendingBets) {
-        const won = bet.selection === winnerId;
-        const payout = won ? Math.floor(bet.amount * bet.oddsAtPlacement) : 0;
-        const profit = won ? payout - bet.amount : -bet.amount;
-
-        await tx.bet.update({
-          where: { id: bet.id },
-          data: {
-            status: won ? 'WON' : 'LOST',
-            payout,
-          },
-        });
-
-        await tx.user.update({
-          where: { id: bet.userId },
-          data: {
-            balance: won ? { increment: payout } : undefined,
-            totalProfit: { increment: profit },
-          },
-        });
-      }
-
-      this.logger.log(
-        `Resolved ${pendingBets.length} bets for event ${eventId}, winner: ${winnerId}`,
-      );
-
-      return [
-        ...new Set(
-          pendingBets
-            .filter((b) => b.selection === winnerId)
-            .map((b) => b.userId),
-        ),
-      ];
+    const pendingBets = await this.prisma.bet.findMany({
+      where: { eventId, status: 'PENDING' },
     });
 
-    // Track win_bet challenge progress (once per user per event)
-    for (const uid of winnerUserIds) {
-      this.challengesService.trackProgress(uid, 'win_bet').catch(() => {});
-    }
+    if (pendingBets.length === 0) return;
+
+    // Bulk update losing bets (one query)
+    await this.prisma.bet.updateMany({
+      where: { eventId, status: 'PENDING', selection: { not: winnerId } },
+      data: { status: 'LOST', payout: 0 },
+    });
+
+    const losingBets = pendingBets.filter((b) => b.selection !== winnerId);
+    const winningBets = pendingBets.filter((b) => b.selection === winnerId);
+
+    // Publish per-bet messages for all bets
+    await pMap(
+      losingBets,
+      (bet) =>
+        this.channel.publish(EXCHANGES.EVENTS, ROUTING_KEYS.BET_UPDATE, {
+          betId: bet.id,
+          userId: bet.userId,
+          action: 'lost',
+          amount: bet.amount,
+          payout: 0,
+          oddsAtPlacement: bet.oddsAtPlacement,
+        }),
+      { concurrency: 5 },
+    );
+
+    await pMap(
+      winningBets,
+      (bet) => {
+        const payout = Math.floor(bet.amount * bet.oddsAtPlacement);
+        return this.channel.publish(EXCHANGES.EVENTS, ROUTING_KEYS.BET_UPDATE, {
+          betId: bet.id,
+          userId: bet.userId,
+          action: 'won',
+          amount: bet.amount,
+          payout,
+          oddsAtPlacement: bet.oddsAtPlacement,
+        });
+      },
+      { concurrency: 5 },
+    );
+
+    this.logger.log(
+      `Resolved event ${eventId}: ${losingBets.length} lost, ${winningBets.length} won (all queued)`,
+    );
   }
 
   async refundEventBets(eventId: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const pendingBets = await tx.bet.findMany({
-        where: { eventId, status: 'PENDING' },
-      });
-
-      for (const bet of pendingBets) {
-        await tx.bet.update({
-          where: { id: bet.id },
-          data: { status: 'CANCELLED', payout: 0 },
-        });
-
-        await tx.user.update({
-          where: { id: bet.userId },
-          data: { balance: { increment: bet.amount } },
-        });
-      }
-
-      this.logger.log(
-        `Refunded ${pendingBets.length} bets for cancelled event ${eventId}`,
-      );
+    const pendingBets = await this.prisma.bet.findMany({
+      where: { eventId, status: 'PENDING' },
     });
+
+    if (pendingBets.length === 0) return;
+
+    // Publish per-bet refund messages
+    await pMap(
+      pendingBets,
+      (bet) =>
+        this.channel.publish(EXCHANGES.EVENTS, ROUTING_KEYS.BET_UPDATE, {
+          betId: bet.id,
+          userId: bet.userId,
+          action: 'refund',
+          amount: bet.amount,
+          payout: 0,
+          oddsAtPlacement: bet.oddsAtPlacement,
+        }),
+      { concurrency: 5 },
+    );
+
+    this.logger.log(
+      `Refund event ${eventId}: ${pendingBets.length} bets queued for refund`,
+    );
   }
 }

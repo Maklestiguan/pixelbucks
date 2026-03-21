@@ -27,24 +27,33 @@ export class OutboxService {
 
     if (events.length === 0) return;
 
-    for (const event of events) {
-      try {
-        const exchange = this.getExchange(event.type);
-        const routingKey = event.type;
+    const results = await Promise.allSettled(
+      events.map((event) =>
+        this.channel
+          .publish(this.getExchange(event.type), event.type, event.payload)
+          .then(() => event.id),
+      ),
+    );
 
-        await this.channel.publish(exchange, routingKey, event.payload);
-
-        await this.prisma.outboxEvent.update({
-          where: { id: event.id },
-          data: { processed: true, processedAt: new Date() },
-        });
-
+    const successIds: string[] = [];
+    for (const [i, result] of results.entries()) {
+      if (result.status === 'fulfilled') {
+        successIds.push(result.value);
         this.logger.debug(
-          `Published outbox event: ${event.type} (${event.id})`,
+          `Published outbox event: ${events[i].type} (${events[i].id})`,
         );
-      } catch (err) {
-        this.logger.error(`Failed to publish outbox event ${event.id}: ${err}`);
+      } else {
+        this.logger.error(
+          `Failed to publish outbox event ${events[i].id}: ${result.reason}`,
+        );
       }
+    }
+
+    if (successIds.length > 0) {
+      await this.prisma.outboxEvent.updateMany({
+        where: { id: { in: successIds } },
+        data: { processed: true, processedAt: new Date() },
+      });
     }
   }
 

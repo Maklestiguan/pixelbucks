@@ -77,5 +77,14 @@ export function useAuth() {
     setState((s) => ({ ...s, user }));
   }, []);
 
-  return { ...state, login, register, logout, refreshUser };
+  /** Update balance in-memory without an API call (used by socket events) */
+  const updateBalance = useCallback((balanceCents: number) => {
+    setState((s) => {
+      if (!s.user) return s;
+      const formatted = (balanceCents / 100).toFixed(2);
+      return { ...s, user: { ...s.user, balance: formatted } };
+    });
+  }, []);
+
+  return { ...state, login, register, logout, refreshUser, updateBalance };
 }

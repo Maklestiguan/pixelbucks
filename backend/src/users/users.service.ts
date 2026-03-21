@@ -8,6 +8,7 @@ import {
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { PrismaService } from '../prisma';
+import { BalanceAuditService } from '../balance-audit';
 import { UpdateProfileDto } from './dto';
 
 const LEADERBOARD_TTL = 60 * 1000; // 60s
@@ -21,6 +22,7 @@ export class UsersService {
 
   constructor(
     private prisma: PrismaService,
+    private balanceAudit: BalanceAuditService,
     @Inject(CACHE_MANAGER) private cache: Cache,
   ) {}
 
@@ -159,6 +161,10 @@ export class UsersService {
     this.logger.log(
       `Replenished user ${userId} with ${REPLENISH_AMOUNT / 100} PB`,
     );
+
+    this.balanceAudit
+      .log({ userId, amount: REPLENISH_AMOUNT, reason: 'replenish' })
+      .catch(() => {});
   }
 
   /** Leaderboard: top users by totalProfit (public stats only) */

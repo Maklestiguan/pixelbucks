@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma';
+import { BalanceAuditService } from '../balance-audit';
 import type { ChallengeType } from '@prisma/client';
 import { InputJsonValue } from '@prisma/client/runtime/client';
 
@@ -98,7 +99,10 @@ const WEEKLY_TEMPLATES: ChallengeTemplate[] = [
 export class ChallengesService {
   private readonly logger = new Logger(ChallengesService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private balanceAudit: BalanceAuditService,
+  ) {}
 
   /** Get active challenges for a user, auto-enrolling if not yet enrolled */
   async getActiveChallenges(userId: string) {
@@ -217,6 +221,15 @@ export class ChallengesService {
         this.logger.log(
           `User ${userId} completed challenge "${uc.challenge.title}", rewarded ${uc.challenge.reward / 100} PB`,
         );
+
+        this.balanceAudit
+          .log({
+            userId,
+            amount: uc.challenge.reward,
+            reason: 'challenge_reward',
+            referenceId: uc.challengeId,
+          })
+          .catch(() => {});
       }
     }
   }

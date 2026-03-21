@@ -1,9 +1,12 @@
 import { Module, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 import { BullModule, InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { EventsController } from './events.controller';
 import { EventsService } from './events.service';
+import { EventsGateway } from './events.gateway';
+import { BalanceNotifyConsumer } from './balance-notify.consumer';
 import { PandascoreService } from './pandascore.service';
 import {
   TOURNAMENTS_QUEUE,
@@ -19,6 +22,13 @@ import {
 @Module({
   imports: [
     ConfigModule,
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        secret: config.get<string>('JWT_SECRET'),
+      }),
+    }),
     BullModule.registerQueue(
       { name: TOURNAMENTS_QUEUE },
       { name: MATCHES_QUEUE },
@@ -29,13 +39,15 @@ import {
   controllers: [EventsController],
   providers: [
     EventsService,
+    EventsGateway,
+    BalanceNotifyConsumer,
     PandascoreService,
     TournamentsSyncProcessor,
     MatchesSyncProcessor,
     LiveDetectProcessor,
     ResultsCheckProcessor,
   ],
-  exports: [EventsService],
+  exports: [EventsService, EventsGateway],
 })
 export class EventsModule implements OnModuleInit {
   private readonly logger = new Logger(EventsModule.name);

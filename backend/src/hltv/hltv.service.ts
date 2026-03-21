@@ -1,22 +1,45 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { defaultConfig } from '../hltv-lib/config';
+import {
+  defaultConfig,
+  createProxiedLoadPage,
+  type HLTVConfig,
+} from '../hltv-lib/config';
 import { getMatch } from '../hltv-lib/endpoints/getMatch';
 import { getEvents } from '../hltv-lib/endpoints/getEvents';
 import { getEventMatches } from '../hltv-lib/endpoints/getEventMatches';
 import type { FullMatch as HltvMatch } from '../hltv-lib/endpoints/getMatch';
 import type { EventPreview } from '../hltv-lib/endpoints/getEvents';
 import type { EventMatchPreview } from '../hltv-lib/endpoints/getEventMatches';
+import { HltvProxyService } from './hltv-proxy.service';
 
 @Injectable()
 export class HltvService {
   private readonly logger = new Logger(HltvService.name);
 
-  constructor(private config: ConfigService) {}
-
-  private readonly hltvGetMatch = getMatch(defaultConfig);
   private readonly hltvGetEvents = getEvents(defaultConfig);
   private readonly hltvGetEventMatches = getEventMatches(defaultConfig);
+  // getMatch uses proxied config (odds are geo-restricted in EU)
+  private readonly hltvGetMatch: ReturnType<typeof getMatch>;
+
+  constructor(
+    private config: ConfigService,
+    private proxyService: HltvProxyService,
+  ) {
+    if (this.proxyService.enabled) {
+      const proxiedConfig: HLTVConfig = {
+        loadPage: createProxiedLoadPage(
+          () => this.proxyService.getProxy(),
+          (proxy) => this.proxyService.reportBad(proxy),
+        ),
+      };
+      this.hltvGetMatch = getMatch(proxiedConfig);
+      this.logger.log('HLTV getMatch() will use proxy');
+    } else {
+      this.hltvGetMatch = getMatch(defaultConfig);
+      this.logger.log('HLTV getMatch() will use direct connection');
+    }
+  }
 
   // Rate limiter: HLTV_RATE_LIMIT requests per HLTV_RATE_WINDOW_MS (default 5 per 20s)
   private requestTimestamps: number[] = [];
@@ -113,9 +136,7 @@ export class HltvService {
     limit = this.config.get<number>('HLTV_MAX_EVENTS', 10),
   ): Promise<EventPreview[] | null> {
     this.logger.debug('Queuing HLTV getEvents...');
-    const events = await this.enqueue('getEvents', () =>
-      this.hltvGetEvents(),
-    );
+    const events = await this.enqueue('getEvents', () => this.hltvGetEvents());
     if (events) {
       const limited = events.slice(0, limit);
       this.logger.debug(
@@ -162,9 +183,7 @@ export class HltvService {
       if (match.odds?.length) {
         const top = match.odds.slice(0, 5);
         for (const o of top) {
-          this.logger.debug(
-            `  odds: ${o.provider} → ${o.team1} / ${o.team2}`,
-          );
+          this.logger.debug(`  odds: ${o.provider} → ${o.team1} / ${o.team2}`);
         }
       }
     }

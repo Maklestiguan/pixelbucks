@@ -5,6 +5,7 @@ import type { Cache } from 'cache-manager';
 import type { Job, Queue } from 'bullmq';
 import { PrismaService } from '../prisma';
 import { HltvService } from './hltv.service';
+import { EventsGateway } from '../events/events.gateway';
 import { matchTeams, datesClose, normalizeTeamName } from './hltv.team-matcher';
 
 export const HLTV_MAPPING_QUEUE = 'hltv-mapping';
@@ -115,9 +116,7 @@ export class HltvMappingProcessor extends WorkerHost {
       }
     }
 
-    this.logger.log(
-      `Tournament mapping done: ${mapped}/${unmapped.length}`,
-    );
+    this.logger.log(`Tournament mapping done: ${mapped}/${unmapped.length}`);
     return { mapped };
   }
 }
@@ -145,6 +144,7 @@ export class HltvOddsProcessor extends WorkerHost {
   constructor(
     private prisma: PrismaService,
     private hltvService: HltvService,
+    private eventsGateway: EventsGateway,
     @Inject(CACHE_MANAGER) private cache: Cache,
     @InjectQueue(HLTV_ODDS_QUEUE) private oddsQueue: Queue,
   ) {
@@ -265,10 +265,7 @@ export class HltvOddsProcessor extends WorkerHost {
           );
 
           if (!result.matched) continue;
-          if (
-            hltvMatch.date &&
-            !datesClose(event.scheduledAt, hltvMatch.date)
-          )
+          if (hltvMatch.date && !datesClose(event.scheduledAt, hltvMatch.date))
             continue;
 
           try {
@@ -378,6 +375,7 @@ export class HltvOddsProcessor extends WorkerHost {
         data: { oddsA, oddsB },
       });
       await this.cache.del(`events:detail:${data.eventId}`);
+      this.eventsGateway.broadcastOddsUpdate(data.eventId, oddsA, oddsB);
       this.logger.log(
         `Odds "${data.teamA} vs ${data.teamB}": ${oddsA}/${oddsB} (${validOdds.length} providers)`,
       );

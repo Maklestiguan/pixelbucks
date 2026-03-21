@@ -4,10 +4,25 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma';
 import { EventsService } from '../events/events.service';
+import { BalanceAuditService } from '../balance-audit';
 import { UpdateEventDto, AdjustBalanceDto } from './dto';
 import type { MatchStatus, Prisma } from '@prisma/client';
+import {
+  TOURNAMENTS_QUEUE,
+  MATCHES_QUEUE,
+  LIVE_QUEUE,
+  RESULTS_QUEUE,
+} from '../events/events-sync.processor';
+import {
+  HLTV_MAPPING_QUEUE,
+  HLTV_ODDS_QUEUE,
+} from '../hltv/hltv-sync.processor';
+import { REPLENISH_QUEUE } from '../users/replenish.processor';
+import { CHALLENGES_QUEUE } from '../challenges/challenges.processor';
 
 const VALID_STATUSES: MatchStatus[] = [
   'UPCOMING',
@@ -20,10 +35,46 @@ const VALID_STATUSES: MatchStatus[] = [
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
 
+  private readonly queues: { name: string; label: string; queue: Queue }[];
+
   constructor(
     private prisma: PrismaService,
     private eventsService: EventsService,
-  ) {}
+    private balanceAudit: BalanceAuditService,
+    @InjectQueue(TOURNAMENTS_QUEUE) tournamentsQueue: Queue,
+    @InjectQueue(MATCHES_QUEUE) matchesQueue: Queue,
+    @InjectQueue(LIVE_QUEUE) liveQueue: Queue,
+    @InjectQueue(RESULTS_QUEUE) resultsQueue: Queue,
+    @InjectQueue(HLTV_MAPPING_QUEUE) hltvMappingQueue: Queue,
+    @InjectQueue(HLTV_ODDS_QUEUE) hltvOddsQueue: Queue,
+    @InjectQueue(REPLENISH_QUEUE) replenishQueue: Queue,
+    @InjectQueue(CHALLENGES_QUEUE) challengesQueue: Queue,
+    @InjectQueue('chat') chatQueue: Queue,
+  ) {
+    this.queues = [
+      {
+        name: TOURNAMENTS_QUEUE,
+        label: 'Tournament Sync',
+        queue: tournamentsQueue,
+      },
+      { name: MATCHES_QUEUE, label: 'Match Sync', queue: matchesQueue },
+      { name: LIVE_QUEUE, label: 'Live Detection', queue: liveQueue },
+      { name: RESULTS_QUEUE, label: 'Results Check', queue: resultsQueue },
+      {
+        name: HLTV_MAPPING_QUEUE,
+        label: 'HLTV Mapping',
+        queue: hltvMappingQueue,
+      },
+      { name: HLTV_ODDS_QUEUE, label: 'HLTV Odds', queue: hltvOddsQueue },
+      {
+        name: REPLENISH_QUEUE,
+        label: 'Weekly Replenish',
+        queue: replenishQueue,
+      },
+      { name: CHALLENGES_QUEUE, label: 'Challenges', queue: challengesQueue },
+      { name: 'chat', label: 'Chat Cleanup', queue: chatQueue },
+    ];
+  }
 
   async updateEvent(id: string, dto: UpdateEventDto) {
     const event = await this.prisma.event.findUnique({ where: { id } });
@@ -157,6 +208,15 @@ export class AdminService {
       `Admin adjusted balance for user ${userId}: ${dto.amount > 0 ? '+' : ''}${dto.amount} cents. Reason: ${dto.reason || 'none'}`,
     );
 
+    this.balanceAudit
+      .log({
+        userId,
+        amount: dto.amount,
+        reason: 'admin_adjust',
+        note: dto.reason,
+      })
+      .catch(() => {});
+
     return {
       ...updated,
       balance: this.formatBalance(updated.balance),
@@ -182,6 +242,83 @@ export class AdminService {
       activeEvents,
       totalCirculation: this.formatBalance(balanceResult._sum.balance || 0),
     };
+  }
+
+  async getJobSchedules() {
+    const results = await Promise.all(
+      this.queues.map(async ({ name, label, queue }) => {
+        try {
+          const [schedulers, completed, active] = await Promise.all([
+            queue.getRepeatableJobs(),
+            queue.getCompleted(0, 0),
+            queue.getActive(0, 0),
+          ]);
+
+          const lastCompleted = completed[0];
+          let lastRun: string | null = null;
+          if (lastCompleted?.finishedOn) {
+            const d = new Date(lastCompleted.finishedOn);
+            if (!isNaN(d.getTime())) lastRun = d.toISOString();
+          }
+          const lastRunName = lastCompleted?.name || null;
+          const isRunning = active.length > 0;
+
+          if (schedulers.length === 0) {
+            return [
+              {
+                queue: name,
+                label,
+                jobName: null,
+                interval: null,
+                cron: null,
+                next: null,
+                lastRun,
+                lastRunName,
+                isRunning,
+              },
+            ];
+          }
+
+          return schedulers.map((s) => {
+            let next: string | null = null;
+            if (s.next) {
+              const d = new Date(s.next);
+              if (!isNaN(d.getTime())) next = d.toISOString();
+            }
+
+            return {
+              queue: name,
+              label,
+              jobName: s.name,
+              interval: s.every ? Number(s.every) : null,
+              cron: s.pattern || null,
+              next,
+              lastRun,
+              lastRunName,
+              isRunning,
+            };
+          });
+        } catch (err) {
+          this.logger.warn(`Failed to query queue "${name}": ${err}`);
+          return [
+            {
+              queue: name,
+              label,
+              jobName: null,
+              interval: null,
+              cron: null,
+              next: null,
+              lastRun: null,
+              lastRunName: null,
+              isRunning: false,
+              error: String(err),
+            },
+          ];
+        }
+      }),
+    );
+
+    return results.flat();
   }
 
   private formatBalance(cents: number): string {

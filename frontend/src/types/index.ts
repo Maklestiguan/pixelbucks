@@ -110,6 +110,37 @@ export interface PlatformStats {
   totalCirculation: string;
 }
 
+export interface BalanceAuditEntry {
+  id: string;
+  userId: string;
+  amount: number;
+  balanceAfter: number;
+  reason: string;
+  referenceId: string | null;
+  note: string | null;
+  createdAt: string;
+  user?: { id: string; username: string };
+  reference?: {
+    refType: "bet" | "challenge";
+    amount?: number;
+    selection?: string;
+    oddsAtPlacement?: number;
+    status?: string;
+    payout?: number | null;
+    event?: { id: string; teamA: string; teamB: string; game: string };
+    title?: string;
+    reward?: number;
+  } | null;
+}
+
+export interface FeedbackEntry {
+  id: string;
+  userId: string;
+  text: string;
+  createdAt: string;
+  user?: { id: string; username: string };
+}
+
 export interface PaginatedResponse<T> {
   data: T[];
   total: number;
