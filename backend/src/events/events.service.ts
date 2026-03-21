@@ -49,7 +49,7 @@ export class EventsService {
     const [events, total] = await Promise.all([
       this.prisma.event.findMany({
         where,
-        orderBy: { scheduledAt: 'asc' },
+        orderBy: { scheduledAt: status === 'FINISHED' ? 'desc' : 'asc' },
         skip: (page - 1) * limit,
         take: limit,
       }),
@@ -91,12 +91,15 @@ export class EventsService {
 
     let synced = 0;
     const allowedTiers = new Set(this.pandascore.tiers);
+    const syncedNames: string[] = [];
 
     for (const t of [...dota2Tournaments, ...cs2Tournaments]) {
       const tier = t.serie?.tier || t.tier || 'unranked';
       if (!allowedTiers.has(tier)) continue;
 
       const game = t.videogame?.slug === 'dota-2' ? 'dota2' : 'cs2';
+
+      const endAt = t.end_at ? new Date(t.end_at) : null;
 
       try {
         await this.prisma.tournament.upsert({
@@ -106,13 +109,18 @@ export class EventsService {
             name: t.name,
             tier,
             game,
+            endAt,
           },
           update: {
             name: t.name,
             tier,
+            endAt,
           },
         });
         synced++;
+        syncedNames.push(
+          `[${game}/${tier}] ${t.league?.name || '?'} / ${t.name}`,
+        );
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         this.logger.error(`Failed to upsert tournament ${t.id}: ${message}`);
@@ -120,42 +128,65 @@ export class EventsService {
     }
 
     this.logger.log(
-      `Synced ${synced} tier-filtered tournaments (${dota2Tournaments.length} Dota 2 fetched, ${cs2Tournaments.length} CS2 fetched)`,
+      `Synced ${synced} tier-filtered tournaments (${dota2Tournaments.length} Dota 2 fetched, ${cs2Tournaments.length} CS2 fetched):\n${syncedNames.join('\n')}`,
     );
     return { synced };
   }
 
   async syncUpcomingMatches() {
-    // Get synced tournament PandaScore IDs + DB IDs for server-side filtering
+    // Get active (not ended) tournament PandaScore IDs + DB IDs, split by game
     const allowedTournaments = await this.prisma.tournament.findMany({
-      select: { pandascoreId: true, id: true },
+      where: {
+        OR: [{ endAt: null }, { endAt: { gte: new Date() } }],
+      },
+      select: { pandascoreId: true, id: true, game: true },
     });
     const tournamentMap = new Map(
       allowedTournaments.map((t) => [t.pandascoreId, t.id]),
     );
-    const pandascoreIds = allowedTournaments.map((t) => t.pandascoreId);
+    const dota2TournamentIds = allowedTournaments
+      .filter((t) => t.game === 'dota2')
+      .map((t) => t.pandascoreId);
+    const cs2TournamentIds = allowedTournaments
+      .filter((t) => t.game === 'cs2')
+      .map((t) => t.pandascoreId);
 
-    if (pandascoreIds.length === 0) {
+    if (dota2TournamentIds.length === 0 && cs2TournamentIds.length === 0) {
       this.logger.warn(
         'No synced tournaments — skipping match sync. Run sync-tournaments first.',
       );
       return { synced: 0, dota2: 0, cs2: 0 };
     }
 
-    // Filter by tournament_id in PandaScore request so we only get tier S/A matches
-    const [dota2Matches, cs2Matches] = await Promise.all([
-      this.pandascore.getUpcomingMatches('dota2', {
-        tournamentIds: pandascoreIds,
-      }),
-      this.pandascore.getUpcomingMatches('csgo', {
-        tournamentIds: pandascoreIds,
-      }),
-    ]);
+    // Filter by tournament_id per game so we only send relevant IDs
+    const [dota2Upcoming, cs2Upcoming, dota2Running, cs2Running] =
+      await Promise.all([
+        this.pandascore.getUpcomingMatches('dota2', {
+          tournamentIds: dota2TournamentIds,
+        }),
+        this.pandascore.getUpcomingMatches('csgo', {
+          tournamentIds: cs2TournamentIds,
+        }),
+        this.pandascore.getRunningMatches('dota2', {
+          tournamentIds: dota2TournamentIds,
+        }),
+        this.pandascore.getRunningMatches('csgo', {
+          tournamentIds: cs2TournamentIds,
+        }),
+      ]);
+
+    const dota2Matches = [...dota2Upcoming, ...dota2Running];
+    const cs2Matches = [...cs2Upcoming, ...cs2Running];
 
     let synced = 0;
 
+    let skippedTbd = 0;
+
     for (const match of [...dota2Matches, ...cs2Matches]) {
-      if (match.opponents.length < 2) continue;
+      if (match.opponents.length < 2) {
+        skippedTbd++;
+        continue;
+      }
 
       const tournamentDbId = tournamentMap.get(match.tournament?.id);
       const game = match.videogame?.slug === 'dota-2' ? 'dota2' : 'cs2';
@@ -177,7 +208,7 @@ export class EventsService {
             scheduledAt: new Date(
               match.scheduled_at || match.begin_at || new Date(),
             ),
-            status: 'UPCOMING',
+            status: match.status === 'running' ? 'LIVE' : 'UPCOMING',
             // PandaScore free tier doesn't provide betting odds.
             // Default 1.86/1.86 — admins can adjust via PATCH /api/admin/events/:id
             oddsA: 1.86,
@@ -203,6 +234,9 @@ export class EventsService {
           },
         });
         synced++;
+        this.logger.debug(
+          `[${game}] ${match.league?.name || '?'}/${match.tournament?.name || '?'} — ${match.opponents[0].opponent.name} vs ${match.opponents[1].opponent.name}`,
+        );
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         this.logger.error(`Failed to upsert match ${match.id}: ${message}`);
@@ -210,58 +244,122 @@ export class EventsService {
     }
 
     this.logger.log(
-      `Synced ${synced} matches (${dota2Matches.length} Dota 2, ${cs2Matches.length} CS2)`,
+      `Synced ${synced} matches (${dota2Matches.length} Dota 2, ${cs2Matches.length} CS2, ${skippedTbd} skipped TBD)`,
     );
     return { synced, dota2: dota2Matches.length, cs2: cs2Matches.length };
   }
 
   async detectLiveMatches() {
-    // Only check running matches from synced tournaments
-    const tournamentIds = (
-      await this.prisma.tournament.findMany({ select: { pandascoreId: true } })
-    ).map((t) => t.pandascoreId);
+    // Only check running matches from active (not ended) tournaments, split by game
+    const tournaments = await this.prisma.tournament.findMany({
+      where: {
+        OR: [{ endAt: null }, { endAt: { gte: new Date() } }],
+      },
+      select: { pandascoreId: true, game: true },
+    });
+    const dota2Ids = tournaments
+      .filter((t) => t.game === 'dota2')
+      .map((t) => t.pandascoreId);
+    const cs2Ids = tournaments
+      .filter((t) => t.game === 'cs2')
+      .map((t) => t.pandascoreId);
 
     const [dota2Running, cs2Running] = await Promise.all([
-      this.pandascore.getRunningMatches('dota2', { tournamentIds }),
-      this.pandascore.getRunningMatches('csgo', { tournamentIds }),
+      this.pandascore.getRunningMatches('dota2', { tournamentIds: dota2Ids }),
+      this.pandascore.getRunningMatches('csgo', { tournamentIds: cs2Ids }),
     ]);
 
     const allRunning = [...dota2Running, ...cs2Running];
     const runningMap = new Map(allRunning.map((m) => [m.id, m]));
 
-    if (runningMap.size === 0) return { updated: 0 };
+    if (runningMap.size === 0) return { updated: 0, created: 0 };
 
-    // Find UPCOMING events whose PandaScore match is now running
-    const upcomingEvents = await this.prisma.event.findMany({
+    // Get tournament mapping for potential new inserts
+    const allowedTournaments = await this.prisma.tournament.findMany({
+      select: { pandascoreId: true, id: true },
+    });
+    const tournamentMap = new Map(
+      allowedTournaments.map((t) => [t.pandascoreId, t.id]),
+    );
+
+    // Find existing events for these running matches (any status)
+    const existingEvents = await this.prisma.event.findMany({
       where: {
-        status: 'UPCOMING',
         pandascoreId: { in: [...runningMap.keys()] },
       },
-      select: { id: true, pandascoreId: true },
+      select: { id: true, pandascoreId: true, status: true },
     });
+    const existingMap = new Map(existingEvents.map((e) => [e.pandascoreId, e]));
 
     let updated = 0;
-    for (const event of upcomingEvents) {
-      const match = runningMap.get(event.pandascoreId);
-      const updateData: Prisma.EventUpdateInput = {
-        status: 'LIVE',
-        league: match?.league?.name || null,
-      };
-      if (match) {
-        // Refresh rawData with running match data (includes streams_list)
-        updateData.rawData = match as unknown as Prisma.InputJsonValue;
+    let created = 0;
+
+    for (const [pandascoreId, match] of runningMap) {
+      const existing = existingMap.get(pandascoreId);
+
+      if (existing) {
+        // Transition UPCOMING → LIVE
+        if (existing.status === 'UPCOMING') {
+          await this.prisma.event.update({
+            where: { id: existing.id },
+            data: {
+              status: 'LIVE',
+              league: match.league?.name || null,
+              rawData: match as unknown as Prisma.InputJsonValue,
+            },
+          });
+          updated++;
+        }
+      } else {
+        // Match went live without being synced as UPCOMING — create it now
+        if (match.opponents?.length < 2) continue;
+
+        const game = match.videogame?.slug === 'dota-2' ? 'dota2' : 'cs2';
+        const tournamentDbId = tournamentMap.get(match.tournament?.id);
+
+        try {
+          await this.prisma.event.create({
+            data: {
+              pandascoreId: match.id,
+              game,
+              tournament:
+                match.tournament?.name || match.league?.name || 'Unknown',
+              league: match.league?.name || null,
+              tournamentId: tournamentDbId || null,
+              teamA: match.opponents[0].opponent.name,
+              teamALogo: match.opponents[0].opponent.image_url,
+              teamB: match.opponents[1].opponent.name,
+              teamBLogo: match.opponents[1].opponent.image_url,
+              scheduledAt: new Date(
+                match.scheduled_at || match.begin_at || new Date(),
+              ),
+              status: 'LIVE',
+              oddsA: 1.86,
+              oddsB: 1.86,
+              maxBet: this.defaultMaxBet,
+              bestOf: match.number_of_games || null,
+              rawData: match as unknown as Prisma.InputJsonValue,
+            },
+          });
+          created++;
+          this.logger.log(
+            `Created LIVE event for ${match.opponents[0].opponent.name} vs ${match.opponents[1].opponent.name} (PandaScore ${match.id})`,
+          );
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          this.logger.error(
+            `Failed to create live event ${match.id}: ${message}`,
+          );
+        }
       }
-      await this.prisma.event.update({
-        where: { id: event.id },
-        data: updateData,
-      });
-      updated++;
     }
 
-    if (updated > 0) {
-      this.logger.log(`Marked ${updated} events as LIVE`);
+    if (updated > 0 || created > 0) {
+      this.logger.log(
+        `Live detection: ${updated} marked LIVE, ${created} new LIVE events created`,
+      );
     }
-    return { updated };
+    return { updated, created };
   }
 
   async checkMatchResults() {

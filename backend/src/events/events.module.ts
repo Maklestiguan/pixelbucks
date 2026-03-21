@@ -49,7 +49,7 @@ export class EventsModule implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    // Remove existing repeatable jobs to avoid duplicates
+    // Clean slate: remove old repeatable jobs and drain stale delayed/waiting jobs
     for (const queue of [
       this.tournamentsQueue,
       this.matchesQueue,
@@ -60,6 +60,7 @@ export class EventsModule implements OnModuleInit {
       for (const job of jobs) {
         await queue.removeRepeatableByKey(job.key);
       }
+      await queue.drain();
     }
 
     const tournamentsInterval = this.config.get<number>(
@@ -84,41 +85,33 @@ export class EventsModule implements OnModuleInit {
       removeOnFail: { count: 50 },
     };
 
+    // Register repeatable jobs
     await this.tournamentsQueue.add(
       'sync',
       {},
-      {
-        repeat: { every: tournamentsInterval, immediately: true },
-        ...repeatOpts,
-      },
+      { repeat: { every: tournamentsInterval }, ...repeatOpts },
     );
-
     await this.matchesQueue.add(
       'sync',
       {},
-      {
-        repeat: { every: matchesInterval, immediately: true },
-        ...repeatOpts,
-      },
+      { repeat: { every: matchesInterval }, ...repeatOpts },
     );
-
     await this.liveQueue.add(
       'detect',
       {},
-      {
-        repeat: { every: liveInterval, immediately: true },
-        ...repeatOpts,
-      },
+      { repeat: { every: liveInterval }, ...repeatOpts },
     );
-
     await this.resultsQueue.add(
       'check',
       {},
-      {
-        repeat: { every: resultsInterval, immediately: true },
-        ...repeatOpts,
-      },
+      { repeat: { every: resultsInterval }, ...repeatOpts },
     );
+
+    // Fire one-off jobs to guarantee immediate run on startup
+    await this.tournamentsQueue.add('sync-now', {}, repeatOpts);
+    await this.matchesQueue.add('sync-now', {}, repeatOpts);
+    await this.liveQueue.add('detect-now', {}, repeatOpts);
+    await this.resultsQueue.add('check-now', {}, repeatOpts);
 
     this.logger.log(
       `Events sync jobs registered (tournaments: ${tournamentsInterval}ms, matches: ${matchesInterval}ms, live: ${liveInterval}ms, results: ${resultsInterval}ms)`,

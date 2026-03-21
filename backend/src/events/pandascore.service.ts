@@ -62,6 +62,8 @@ export interface PandascoreTournament {
   name: string;
   slug: string;
   tier: string | null;
+  begin_at: string | null;
+  end_at: string | null;
   videogame: {
     id: number;
     name: string;
@@ -125,9 +127,19 @@ export class PandascoreService {
       );
       return data;
     } catch (err: unknown) {
-      if (axios.isAxiosError(err) && err.response?.status === 404) return null;
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Failed to fetch match ${matchId}: ${message}`);
+      if (axios.isAxiosError(err)) {
+        const status = err.response?.status;
+        if (status === 404) return null;
+        const body = err.response?.data
+          ? JSON.stringify(err.response.data).slice(0, 300)
+          : 'no body';
+        this.logger.error(
+          `Failed to fetch match ${matchId}: HTTP ${status} — ${body}`,
+        );
+      } else {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(`Failed to fetch match ${matchId}: ${message}`);
+      }
       return null;
     }
   }
@@ -137,27 +149,33 @@ export class PandascoreService {
     page = 1,
     perPage = 50,
   ): Promise<PandascoreTournament[]> {
-    try {
-      const { data } = await this.client.get<PandascoreTournament[]>(
-        `/${game}/tournaments`,
-        {
+    const results: PandascoreTournament[] = [];
+
+    for (const status of ['running', 'upcoming']) {
+      try {
+        const path = `/${game}/tournaments/${status}`;
+        this.logger.debug(`GET ${path}?page=${page}&per_page=${perPage}`);
+        const { data } = await this.client.get<PandascoreTournament[]>(path, {
           params: {
             page,
             per_page: perPage,
             sort: '-begin_at',
           },
-        },
-      );
-      return data;
-    } catch (err: unknown) {
-      if (axios.isAxiosError(err) && err.response?.status === 429) {
-        this.logger.warn(`PandaScore rate limit hit for ${game}/tournaments`);
-      } else {
+        });
+        this.logger.debug(`${path} → ${data.length} tournaments`);
+        results.push(...data);
+      } catch (err: unknown) {
+        const status_code = axios.isAxiosError(err)
+          ? err.response?.status
+          : null;
         const message = err instanceof Error ? err.message : String(err);
-        this.logger.error(`Failed to fetch ${game}/tournaments: ${message}`);
+        this.logger.warn(
+          `${game}/tournaments/${status} failed (HTTP ${status_code ?? '?'}): ${message} — skipping`,
+        );
       }
-      return [];
     }
+
+    return results;
   }
 
   private async fetchMatches(
@@ -175,10 +193,15 @@ export class PandascoreService {
       if (tournamentIds?.length) {
         params['filter[tournament_id]'] = tournamentIds.join(',');
       }
-      const { data } = await this.client.get<PandascoreMatch[]>(
-        `/${game}/matches/${status}`,
-        { params },
-      );
+      const path = `/${game}/matches/${status}`;
+      const qs = Object.entries(params)
+        .map(([k, v]) => `${k}=${v}`)
+        .join('&');
+      this.logger.debug(`GET ${path}?${qs}`);
+      const { data } = await this.client.get<PandascoreMatch[]>(path, {
+        params,
+      });
+      this.logger.debug(`${path} → ${data.length} matches`);
       return data;
     } catch (err: unknown) {
       this.logger.debug(

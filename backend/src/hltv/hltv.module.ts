@@ -37,12 +37,13 @@ export class HltvModule implements OnModuleInit {
       return;
     }
 
-    // Remove existing repeatable jobs to avoid duplicates
+    // Clean slate: remove old repeatable jobs and drain stale delayed/waiting jobs
     for (const queue of [this.mappingQueue, this.oddsQueue]) {
       const jobs = await queue.getRepeatableJobs();
       for (const job of jobs) {
         await queue.removeRepeatableByKey(job.key);
       }
+      await queue.drain();
     }
 
     const mappingInterval = this.config.get<number>(
@@ -59,23 +60,21 @@ export class HltvModule implements OnModuleInit {
       removeOnFail: { count: 50 },
     };
 
+    // Register repeatable jobs
     await this.mappingQueue.add(
       'map',
       {},
-      {
-        repeat: { every: mappingInterval, immediately: true },
-        ...repeatOpts,
-      },
+      { repeat: { every: mappingInterval }, ...repeatOpts },
     );
-
     await this.oddsQueue.add(
       'sync',
       {},
-      {
-        repeat: { every: oddsInterval, immediately: true },
-        ...repeatOpts,
-      },
+      { repeat: { every: oddsInterval }, ...repeatOpts },
     );
+
+    // Fire one-off jobs to guarantee immediate run on startup
+    await this.mappingQueue.add('map-now', {}, repeatOpts);
+    await this.oddsQueue.add('sync-now', {}, repeatOpts);
 
     this.logger.log(
       `HLTV sync jobs registered (mapping: ${mappingInterval}ms, odds: ${oddsInterval}ms)`,

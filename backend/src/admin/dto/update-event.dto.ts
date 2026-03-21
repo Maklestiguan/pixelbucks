@@ -16,4 +16,7 @@ export class UpdateEventDto {
 
   @NumberField({ optional: true, integer: true, min: 0, max: 120 })
   bettingOpenMinutes?: number;
+
+  @NumberField({ optional: true, integer: true, positive: true })
+  hltvId?: number;
 }

@@ -61,6 +61,13 @@ export class BetsService {
         );
       }
 
+      // CS2 events require HLTV-sourced odds before betting is allowed
+      if (event.game === 'cs2' && !event.hltvId) {
+        throw new BadRequestException(
+          'Betting not available yet — waiting for odds data',
+        );
+      }
+
       // Snapshot odds
       const odds = dto.selection === 'a' ? event.oddsA : event.oddsB;
       if (!odds) {

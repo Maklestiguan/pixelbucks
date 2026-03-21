@@ -5,8 +5,12 @@ export const fetchPage = async (
   url: string,
   loadPage: (url: string) => Promise<string>,
 ): Promise<cheerio.Root> => {
-  const root = cheerio.load(await loadPage(url));
+  const rawHtml = await loadPage(url);
+  console.debug(
+    `[HLTV] fetchPage ${url} → ${rawHtml.length} chars, title: "${rawHtml.match(/<title>(.*?)<\/title>/)?.[1] || '?'}"`,
+  );
 
+  const root = cheerio.load(rawHtml);
   const html = root.html();
 
   if (
@@ -15,6 +19,9 @@ export const fetchPage = async (
     html.includes('Checking your browser before accessing') ||
     html.includes('Enable JavaScript and cookies to continue')
   ) {
+    console.debug(
+      `[HLTV] Cloudflare block detected, first 500 chars: ${html.slice(0, 500)}`,
+    );
     throw new Error(
       'Access denied | www.hltv.org used Cloudflare to restrict access',
     );

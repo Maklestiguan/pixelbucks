@@ -62,6 +62,8 @@ model Tournament {
   name           String
   tier           String   // "s" | "a" | "b" | "c" | "d" | "unranked"
   game           String   // "dota2" | "cs2"
+  hltvEventId    Int?     @map("hltv_event_id")
+  endAt          DateTime? @map("end_at")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
@@ -69,6 +71,7 @@ model Tournament {
 
   @@index([tier])
   @@index([game])
+  @@index([hltvEventId])
   @@map("tournaments")
 }
 

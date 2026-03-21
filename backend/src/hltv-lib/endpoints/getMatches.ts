@@ -51,9 +51,13 @@ export const getMatches =
     });
 
     const $ = HLTVScraper(
-      await fetchPage(`https://www.hltv.org/matches?${query}`, config.loadPage),
+      await fetchPage(
+        `https://www.hltv.org/matches?${query}`,
+        config.loadPage,
+      ),
     );
 
+    // Build event lookup from filter popups
     const events = $('.event-filter-popup a')
       .toArray()
       .map((el) => ({
@@ -69,41 +73,67 @@ export const getMatches =
           })),
       );
 
-    return $('.liveMatch-container')
+    // HLTV updated class names from camelCase to kebab-case — support both
+    const matchEls = $('.liveMatch-container')
       .toArray()
+      .concat($('.live-match-container').toArray())
       .concat($('.upcomingMatch').toArray())
-      .map((el) => {
-        const id = el.find('.a-reset').attrThen('href', getIdAt(2))!;
-        const stars = 5 - el.find('.matchRating i.faded').length;
-        const live = el.find('.matchTime.matchLive').text() === 'LIVE';
-        const title = el.find('.matchInfoEmpty').text() || undefined;
+      .concat($('.upcoming-match').toArray());
 
-        const date = el.find('.matchTime').numFromAttr('data-unix');
+    return matchEls.map((el) => {
+      const id = el.find('.a-reset').attrThen('href', getIdAt(2))!;
 
-        let team1;
-        let team2;
+      // Stars: old = .matchRating i.faded, new = .match-rating .fa-star.faded
+      const fadedCount =
+        el.find('.matchRating i.faded').length ||
+        el.find('.match-rating .fa-star.faded').length;
+      const stars = 5 - fadedCount;
 
-        if (!title) {
-          team1 = {
-            name:
-              el.find('.matchTeamName').first().text() ||
-              el.find('.team1 .team').text(),
-            id: el.numFromAttr('team1'),
-          };
+      // Live detection: old = .matchTime.matchLive, new = .match-meta-live
+      const live =
+        el.find('.matchTime.matchLive').text() === 'LIVE' ||
+        el.find('.match-meta-live').text() === 'Live';
 
-          team2 = {
-            name:
-              el.find('.matchTeamName').eq(1).text() ||
-              el.find('.team2 .team').text(),
-            id: el.numFromAttr('team2'),
-          };
-        }
+      const title =
+        el.find('.matchInfoEmpty').text() ||
+        el.find('.match-info-empty').text() ||
+        undefined;
 
-        const format = el.find('.matchMeta').text();
+      // Date: old = .matchTime[data-unix], new via data attr on wrapper
+      const date =
+        el.find('.matchTime').numFromAttr('data-unix') ||
+        el.find('.match-time').numFromAttr('data-unix') ||
+        el.numFromAttr('data-zonedgrouping-entry-unix');
 
-        const eventName = el.find('.matchEventLogo').attr('title');
-        const event = events.find((x) => x.name === eventName);
+      let team1;
+      let team2;
 
-        return { id, date, stars, title, team1, team2, format, event, live };
-      });
+      if (!title) {
+        team1 = {
+          name:
+            el.find('.matchTeamName').first().text() ||
+            el.find('.match-teamname').first().text() ||
+            el.find('.team1 .team').text(),
+          id: el.numFromAttr('team1'),
+        };
+
+        team2 = {
+          name:
+            el.find('.matchTeamName').eq(1).text() ||
+            el.find('.match-teamname').eq(1).text() ||
+            el.find('.team2 .team').text(),
+          id: el.numFromAttr('team2'),
+        };
+      }
+
+      const format =
+        el.find('.matchMeta').text() || el.find('.match-meta').text();
+
+      const eventName =
+        el.find('.matchEventLogo').attr('title') ||
+        el.find('.match-event-logo').attr('title');
+      const event = events.find((x) => x.name === eventName);
+
+      return { id, date, stars, title, team1, team2, format, event, live };
+    });
   };

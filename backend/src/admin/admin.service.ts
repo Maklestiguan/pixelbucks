@@ -40,6 +40,7 @@ export class AdminService {
     if (dto.oddsB !== undefined) data.oddsB = dto.oddsB;
     if (dto.maxBet !== undefined) data.maxBet = dto.maxBet;
     if (dto.status !== undefined) data.status = dto.status as MatchStatus;
+    if (dto.hltvId !== undefined) data.hltvId = dto.hltvId;
 
     // Open betting for N minutes on a LIVE event
     if (dto.bettingOpenMinutes !== undefined) {
