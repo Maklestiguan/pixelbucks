@@ -23,6 +23,7 @@ export interface EventStream {
 export interface Event {
   id: string;
   pandascoreId: number;
+  hltvId: number | null;
   game: "dota2" | "cs2";
   tournament: string;
   league: string | null;

@@ -221,9 +221,11 @@ function StreamDropdown({
 function InlineBetSlip({
   event,
   onBetPlaced,
+  canBet = true,
 }: {
   event: Event;
   onBetPlaced: () => void;
+  canBet?: boolean;
 }) {
   const { refreshUser } = useAuthContext();
   const [selection, setSelection] = useState<"a" | "b" | null>(null);
@@ -272,11 +274,14 @@ function InlineBetSlip({
     <div className="mt-3 pt-3 border-t border-gray-800">
       <div className="flex items-center gap-2 mb-2">
         <button
-          onClick={() => setSelection(selection === "a" ? null : "a")}
+          onClick={() => canBet && setSelection(selection === "a" ? null : "a")}
+          disabled={!canBet}
           className={`flex-1 py-1.5 rounded text-sm font-medium transition ${
             selection === "a"
               ? "bg-purple-600 text-white"
-              : "bg-gray-800 text-gray-400 hover:text-white"
+              : canBet
+                ? "bg-gray-800 text-gray-400 hover:text-white"
+                : "bg-gray-800/50 text-gray-500 cursor-default"
           }`}
         >
           {event.teamA}{" "}
@@ -287,11 +292,14 @@ function InlineBetSlip({
           )}
         </button>
         <button
-          onClick={() => setSelection(selection === "b" ? null : "b")}
+          onClick={() => canBet && setSelection(selection === "b" ? null : "b")}
+          disabled={!canBet}
           className={`flex-1 py-1.5 rounded text-sm font-medium transition ${
             selection === "b"
               ? "bg-purple-600 text-white"
-              : "bg-gray-800 text-gray-400 hover:text-white"
+              : canBet
+                ? "bg-gray-800 text-gray-400 hover:text-white"
+                : "bg-gray-800/50 text-gray-500 cursor-default"
           }`}
         >
           {event.teamB}{" "}
@@ -347,6 +355,7 @@ function InlineAdminControls({
 }) {
   const [oddsA, setOddsA] = useState(String(event.oddsA ?? ""));
   const [oddsB, setOddsB] = useState(String(event.oddsB ?? ""));
+  const [hltvIdStr, setHltvIdStr] = useState(String(event.hltvId ?? ""));
   const [bettingMinutes, setBettingMinutes] = useState("5");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
@@ -442,6 +451,50 @@ function InlineAdminControls({
           Save
         </button>
 
+        <span className="text-gray-600">|</span>
+        <input
+          type="number"
+          value={hltvIdStr}
+          onChange={(e) => setHltvIdStr(e.target.value)}
+          placeholder="HLTV ID"
+          className="w-20 bg-gray-800 text-white px-2 py-1 rounded border border-gray-700 focus:border-yellow-500 focus:outline-none font-mono text-xs text-center"
+          title="HLTV Match ID"
+        />
+        <button
+          onClick={async () => {
+            const id = parseInt(hltvIdStr, 10);
+            if (isNaN(id) || id <= 0) return;
+            setSaving(true);
+            setMsg("");
+            try {
+              const updated = await updateEvent(event.id, { hltvId: id });
+              onUpdated(updated);
+              setMsg("HLTV set");
+              setTimeout(() => setMsg(""), 2000);
+            } catch {
+              setMsg("Failed");
+              setTimeout(() => setMsg(""), 3000);
+            } finally {
+              setSaving(false);
+            }
+          }}
+          disabled={saving}
+          className="bg-yellow-600 hover:bg-yellow-700 text-white px-2 py-1 rounded text-xs font-medium disabled:opacity-50"
+        >
+          Set
+        </button>
+        {event.hltvId && (
+          <a
+            href={`https://www.hltv.org/matches/${event.hltvId}/match`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="text-xs text-blue-400 hover:text-blue-300 underline"
+          >
+            HLTV
+          </a>
+        )}
+
         {event.status === "LIVE" && (
           <>
             <span className="text-gray-600">|</span>
@@ -512,127 +565,129 @@ function EventCard({
     event.status === "LIVE" &&
     !!event.bettingOpenUntil &&
     new Date(event.bettingOpenUntil) > new Date();
+  const hasRealOdds = event.game === "cs2" ? !!event.hltvId : true;
   const canBet =
     (event.status === "UPCOMING" || isLiveBettingOpen) &&
     event.oddsA &&
-    event.oddsB;
+    event.oddsB &&
+    hasRealOdds;
 
   const matchLabel = `${event.teamA} vs ${event.teamB}`;
 
   return (
     <div className="bg-gray-900 rounded-lg relative">
-      {/* Clickable header row */}
-      <div
-        onClick={() => setExpanded(!expanded)}
-        className="p-4 hover:bg-gray-800/50 transition cursor-pointer"
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <span
-                className={`text-xs px-2 py-0.5 rounded ${
-                  event.game === "dota2"
-                    ? "bg-red-900/50 text-red-300"
-                    : "bg-yellow-900/50 text-yellow-300"
-                }`}
-              >
-                {event.game === "dota2" ? "Dota 2" : "CS2"}
-              </span>
-              {event.league && (
-                <span className="text-xs text-gray-400 font-medium">
-                  {event.league}
-                </span>
-              )}
-              <span className="text-xs text-gray-500">{event.tournament}</span>
-              <span className="text-xs text-gray-600">
-                {formatDate(event.scheduledAt)}
-              </span>
-              {event.bestOf && (
-                <span className="text-xs text-gray-600">BO{event.bestOf}</span>
-              )}
-              {event.status === "LIVE" && (
-                <span className="text-xs px-1.5 py-0.5 rounded bg-red-600/80 text-white font-medium animate-pulse">
-                  LIVE
-                </span>
-              )}
-              {isLiveBettingOpen && (
-                <span className="text-xs px-1.5 py-0.5 rounded bg-green-600/80 text-white font-medium">
-                  BETS OPEN
-                </span>
-              )}
-            </div>
+      {/* Main card content */}
+      <div className="p-4">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <span
+            className={`text-xs px-2 py-0.5 rounded ${
+              event.game === "dota2"
+                ? "bg-red-900/50 text-red-300"
+                : "bg-yellow-900/50 text-yellow-300"
+            }`}
+          >
+            {event.game === "dota2" ? "Dota 2" : "CS2"}
+          </span>
+          {event.league && (
+            <span className="text-xs text-gray-200 font-medium">
+              {event.league}
+            </span>
+          )}
+          <span className="text-xs text-gray-400">{event.tournament}</span>
+          <span className="text-xs text-gray-400">
+            {formatDate(event.scheduledAt)}
+          </span>
+          {event.bestOf && (
+            <span className="text-xs text-gray-400">BO{event.bestOf}</span>
+          )}
+          {event.status === "LIVE" && (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-red-600/80 text-white font-medium animate-pulse">
+              LIVE
+            </span>
+          )}
+          {isLiveBettingOpen && (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-green-600/80 text-white font-medium">
+              BETS OPEN
+            </span>
+          )}
+        </div>
 
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                {event.teamALogo && (
-                  <img
-                    src={event.teamALogo}
-                    alt=""
-                    className="w-6 h-6 rounded shrink-0"
-                  />
-                )}
-                <span
-                  className={`font-medium truncate ${event.winnerId === "a" ? "text-green-400" : ""}`}
-                >
-                  {event.teamA}
-                </span>
-              </div>
-
-              {event.scoreA !== null && event.scoreB !== null ? (
-                <span className="font-mono font-bold text-base shrink-0">
-                  <span
-                    className={
-                      event.winnerId === "a"
-                        ? "text-green-400"
-                        : "text-gray-400"
-                    }
-                  >
-                    {event.scoreA}
-                  </span>
-                  <span className="text-gray-600 mx-1">:</span>
-                  <span
-                    className={
-                      event.winnerId === "b"
-                        ? "text-green-400"
-                        : "text-gray-400"
-                    }
-                  >
-                    {event.scoreB}
-                  </span>
-                </span>
-              ) : (
-                <span className="text-gray-500 text-sm shrink-0">vs</span>
-              )}
-
-              <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
-                <span
-                  className={`font-medium truncate ${event.winnerId === "b" ? "text-green-400" : ""}`}
-                >
-                  {event.teamB}
-                </span>
-                {event.teamBLogo && (
-                  <img
-                    src={event.teamBLogo}
-                    alt=""
-                    className="w-6 h-6 rounded shrink-0"
-                  />
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 ml-4 shrink-0">
-            {/* Stream dropdown */}
-            {event.streams.length > 0 && (
-              <StreamDropdown
-                streams={event.streams}
-                onSelect={(s) => onStreamSelect(s, matchLabel)}
+        {/* Teams + scores row */}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            {event.teamALogo && (
+              <img
+                src={event.teamALogo}
+                alt=""
+                className="w-6 h-6 rounded shrink-0"
               />
             )}
+            <span
+              className={`font-semibold text-base truncate ${event.winnerId === "a" ? "text-green-400" : "text-white"}`}
+            >
+              {event.teamA}
+            </span>
+          </div>
 
+          {event.scoreA !== null && event.scoreB !== null ? (
+            <span className="font-mono font-bold text-lg shrink-0">
+              <span
+                className={
+                  event.winnerId === "a" ? "text-green-400" : "text-gray-200"
+                }
+              >
+                {event.scoreA}
+              </span>
+              <span className="text-gray-400 mx-1">:</span>
+              <span
+                className={
+                  event.winnerId === "b" ? "text-green-400" : "text-gray-200"
+                }
+              >
+                {event.scoreB}
+              </span>
+            </span>
+          ) : (
+            <span className="text-gray-400 text-sm font-medium shrink-0">vs</span>
+          )}
+
+          <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
+            <span
+              className={`font-semibold text-base truncate ${event.winnerId === "b" ? "text-green-400" : "text-white"}`}
+            >
+              {event.teamB}
+            </span>
+            {event.teamBLogo && (
+              <img
+                src={event.teamBLogo}
+                alt=""
+                className="w-6 h-6 rounded shrink-0"
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Odds display — always visible when odds exist */}
+        {event.oddsA && event.oddsB && event.status !== "FINISHED" && event.status !== "CANCELLED" ? (
+          <InlineBetSlip event={event} onBetPlaced={() => {}} canBet={canBet} />
+        ) : !hasRealOdds &&
+          event.game === "cs2" &&
+          event.status !== "FINISHED" &&
+          event.status !== "CANCELLED" ? (
+            <p className="text-xs text-gray-500 mt-2">
+              Odds pending — waiting for HLTV data
+            </p>
+          ) : null}
+
+        {/* Expandable section: streams, admin, details */}
+        <div className="mt-2 flex items-center justify-between">
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition"
+          >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className={`w-4 h-4 text-gray-500 transition-transform ${expanded ? "rotate-180" : ""}`}
+              className={`w-3 h-3 transition-transform ${expanded ? "rotate-180" : ""}`}
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -644,17 +699,33 @@ function EventCard({
                 d="M19 9l-7 7-7-7"
               />
             </svg>
+            {expanded ? "Less" : "More"}
+          </button>
+          <div className="flex items-center gap-2">
+            {event.streams.length > 0 && (
+              <StreamDropdown
+                streams={event.streams}
+                onSelect={(s) => onStreamSelect(s, matchLabel)}
+              />
+            )}
+            {event.hltvId && (
+              <a
+                href={`https://www.hltv.org/matches/${event.hltvId}/match`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-gray-800 text-blue-400 hover:text-blue-300 hover:bg-gray-700 border border-gray-700 transition"
+              >
+                HLTV
+              </a>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Expanded section */}
+      {/* Expanded section — admin + details only */}
       {expanded && (
         <div className="px-4 pb-4 border-t border-gray-800">
-          {canBet && (
-            <InlineBetSlip event={event} onBetPlaced={() => {}} />
-          )}
-
           {isAdmin &&
             event.status !== "FINISHED" &&
             event.status !== "CANCELLED" && (

@@ -9,7 +9,7 @@ import type {
 
 export async function updateEvent(
   id: string,
-  data: { oddsA?: number; oddsB?: number; maxBet?: number; status?: string; bettingOpenMinutes?: number },
+  data: { oddsA?: number; oddsB?: number; maxBet?: number; status?: string; bettingOpenMinutes?: number; hltvId?: number },
 ): Promise<Event> {
   const { data: event } = await api.patch<Event>(`/admin/events/${id}`, data);
   return event;
