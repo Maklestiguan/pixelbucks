@@ -568,8 +568,8 @@ function EventCard({
   const hasRealOdds = event.game === "cs2" ? !!event.hltvId : true;
   const canBet =
     (event.status === "UPCOMING" || isLiveBettingOpen) &&
-    event.oddsA &&
-    event.oddsB &&
+    event.oddsA != null &&
+    event.oddsB != null &&
     hasRealOdds;
 
   const matchLabel = `${event.teamA} vs ${event.teamB}`;
