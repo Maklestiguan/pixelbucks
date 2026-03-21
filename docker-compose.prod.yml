@@ -8,6 +8,11 @@ services:
       POSTGRES_DB: pixelbucks
     volumes:
       - pgdata:/var/lib/postgresql/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
@@ -15,10 +20,20 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RMQ_PASSWORD}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   redis:
     image: redis:7-alpine
     restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   backend:
     build:
@@ -37,6 +52,11 @@ services:
       FRONTEND_URL: ${FRONTEND_URL}
       NODE_ENV: production
       PORT: "3000"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     # No public port — nginx proxies /api and /socket.io internally
 
   frontend:
@@ -47,6 +67,11 @@ services:
     depends_on: [backend]
     ports:
       - "127.0.0.1:8080:80"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
 volumes:
   pgdata:
