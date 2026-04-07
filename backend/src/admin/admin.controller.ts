@@ -2,8 +2,9 @@ import { Controller, Get, Patch, Param, Body, Query } from '@nestjs/common';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AdminService } from './admin.service';
 import { BalanceAuditService } from '../balance-audit';
+import { SettingsService } from '../settings';
 import { FeedbackService } from '../feedback/feedback.service';
-import { UpdateEventDto, AdjustBalanceDto } from './dto';
+import { UpdateEventDto, AdjustBalanceDto, UpdateSettingsDto } from './dto';
 
 @Controller('api/admin')
 @Roles('ADMIN')
@@ -11,8 +12,19 @@ export class AdminController {
   constructor(
     private adminService: AdminService,
     private balanceAudit: BalanceAuditService,
+    private settings: SettingsService,
     private feedbackService: FeedbackService,
   ) {}
+
+  @Get('settings')
+  getSettings() {
+    return this.settings.get();
+  }
+
+  @Patch('settings')
+  updateSettings(@Body() dto: UpdateSettingsDto) {
+    return this.settings.update(dto);
+  }
 
   @Patch('events/:id')
   updateEvent(@Param('id') id: string, @Body() dto: UpdateEventDto) {

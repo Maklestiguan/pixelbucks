@@ -87,3 +87,19 @@ export async function getFeedback(params?: {
   );
   return data;
 }
+
+export interface AppSettings {
+  cs2AllowBetsWithoutHltv: boolean;
+}
+
+export async function getAdminSettings(): Promise<AppSettings> {
+  const { data } = await api.get<AppSettings>("/admin/settings");
+  return data;
+}
+
+export async function updateAdminSettings(
+  patch: Partial<AppSettings>,
+): Promise<AppSettings> {
+  const { data } = await api.patch<AppSettings>("/admin/settings", patch);
+  return data;
+}

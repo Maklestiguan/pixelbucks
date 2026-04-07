@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuthContext } from "../context/AuthContext";
+import { useSettingsContext } from "../context/SettingsContext";
 import * as adminApi from "../api/admin.api";
 import type {
   PlatformStats,
@@ -10,7 +11,7 @@ import type {
 } from "../types";
 import type { JobScheduleEntry } from "../api/admin.api";
 
-type Tab = "stats" | "users" | "audit" | "feedback" | "jobs";
+type Tab = "stats" | "users" | "audit" | "feedback" | "jobs" | "settings";
 
 export function AdminPage() {
   const { user } = useAuthContext();
@@ -24,7 +25,7 @@ export function AdminPage() {
     <div>
       <h1 className="text-2xl font-bold mb-4">Admin Panel</h1>
       <div className="flex gap-2 mb-6">
-        {(["stats", "users", "audit", "feedback", "jobs"] as Tab[]).map((t) => (
+        {(["stats", "users", "audit", "feedback", "jobs", "settings"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -50,6 +51,7 @@ export function AdminPage() {
       {tab === "audit" && <AuditTab />}
       {tab === "feedback" && <FeedbackTab />}
       {tab === "jobs" && <JobsTab />}
+      {tab === "settings" && <SettingsTab />}
     </div>
   );
 }
@@ -823,6 +825,63 @@ function FeedbackTab() {
             </div>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+function SettingsTab() {
+  const { settings, refetch } = useSettingsContext();
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const handleToggle = async (next: boolean) => {
+    setSaving(true);
+    setMsg("");
+    try {
+      await adminApi.updateAdminSettings({ cs2AllowBetsWithoutHltv: next });
+      await refetch();
+      setMsg("Saved");
+      setTimeout(() => setMsg(""), 2000);
+    } catch {
+      setMsg("Failed to save");
+      setTimeout(() => setMsg(""), 3000);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-gray-900 rounded-lg p-6 max-w-2xl">
+      <h2 className="text-lg font-bold mb-4">Platform Settings</h2>
+
+      <label className="flex items-start gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={settings.cs2AllowBetsWithoutHltv}
+          disabled={saving}
+          onChange={(e) => handleToggle(e.target.checked)}
+          className="mt-1 w-4 h-4 accent-purple-600"
+        />
+        <div>
+          <div className="text-sm font-medium text-white">
+            Allow CS2 bets without HLTV odds
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            When enabled, users can place bets on CS2 events even if HLTV
+            mapping hasn&apos;t run yet. Bets use whatever odds are currently
+            on the event (default 1.86 / 1.86 unless an admin has edited
+            them per event).
+          </p>
+        </div>
+      </label>
+
+      {msg && (
+        <p
+          className={`text-xs mt-3 ${msg === "Saved" ? "text-green-400" : "text-red-400"}`}
+        >
+          {msg}
+        </p>
       )}
     </div>
   );

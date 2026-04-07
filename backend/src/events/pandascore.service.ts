@@ -178,6 +178,33 @@ export class PandascoreService {
     return results;
   }
 
+  async getPastTournaments(
+    game: 'dota2' | 'csgo',
+    page = 1,
+    perPage = 50,
+  ): Promise<PandascoreTournament[]> {
+    try {
+      const path = `/${game}/tournaments/past`;
+      this.logger.debug(`GET ${path}?page=${page}&per_page=${perPage}`);
+      const { data } = await this.client.get<PandascoreTournament[]>(path, {
+        params: {
+          page,
+          per_page: perPage,
+          sort: '-begin_at',
+        },
+      });
+      this.logger.debug(`${path} → ${data.length} tournaments`);
+      return data;
+    } catch (err: unknown) {
+      const status_code = axios.isAxiosError(err) ? err.response?.status : null;
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `${game}/tournaments/past failed (HTTP ${status_code ?? '?'}): ${message} — skipping`,
+      );
+      return [];
+    }
+  }
+
   private async fetchMatches(
     game: string,
     status: string,

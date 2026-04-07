@@ -7,6 +7,7 @@ import {
 import type { ChannelWrapper } from 'amqp-connection-manager';
 import { PrismaService } from '../prisma';
 import { BalanceAuditService } from '../balance-audit';
+import { SettingsService } from '../settings';
 import {
   RABBITMQ_CHANNEL,
   EXCHANGES,
@@ -22,6 +23,7 @@ export class BetsService {
   constructor(
     private prisma: PrismaService,
     private balanceAudit: BalanceAuditService,
+    private settings: SettingsService,
     @Inject(RABBITMQ_CHANNEL) private channel: ChannelWrapper,
   ) {}
 
@@ -74,11 +76,15 @@ export class BetsService {
         );
       }
 
-      // CS2 events require HLTV-sourced odds before betting is allowed
+      // CS2 events require HLTV-sourced odds before betting is allowed —
+      // unless the global "allow CS2 bets without HLTV" admin switch is on.
       if (event.game === 'cs2' && !event.hltvId) {
-        throw new BadRequestException(
-          'Betting not available yet — waiting for odds data',
-        );
+        const { cs2AllowBetsWithoutHltv } = await this.settings.get();
+        if (!cs2AllowBetsWithoutHltv) {
+          throw new BadRequestException(
+            'Betting not available yet — waiting for odds data',
+          );
+        }
       }
 
       // Snapshot odds

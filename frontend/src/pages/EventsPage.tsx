@@ -4,6 +4,7 @@ import { getEvents } from "../api/events.api";
 import { placeBet } from "../api/bets.api";
 import { updateEvent } from "../api/admin.api";
 import { useAuthContext } from "../context/AuthContext";
+import { useSettingsContext } from "../context/SettingsContext";
 import { useOddsUpdates } from "../hooks/useOddsUpdates";
 import type { Event, EventStream } from "../types";
 
@@ -557,6 +558,7 @@ function EventCard({
 }) {
   const [event, setEvent] = useState(initialEvent);
   const [expanded, setExpanded] = useState(false);
+  const { settings } = useSettingsContext();
 
   useEffect(() => {
     setEvent(initialEvent);
@@ -566,7 +568,10 @@ function EventCard({
     event.status === "LIVE" &&
     !!event.bettingOpenUntil &&
     new Date(event.bettingOpenUntil) > new Date();
-  const hasRealOdds = event.game === "cs2" ? !!event.hltvId : true;
+  const hasRealOdds =
+    event.game === "cs2"
+      ? !!event.hltvId || settings.cs2AllowBetsWithoutHltv
+      : true;
   const canBet =
     (event.status === "UPCOMING" || isLiveBettingOpen) &&
     event.oddsA != null &&

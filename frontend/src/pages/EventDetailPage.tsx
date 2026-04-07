@@ -4,6 +4,7 @@ import { getEvent } from "../api/events.api";
 import { placeBet } from "../api/bets.api";
 import { updateEvent } from "../api/admin.api";
 import { useAuthContext } from "../context/AuthContext";
+import { useSettingsContext } from "../context/SettingsContext";
 import { useOddsUpdates } from "../hooks/useOddsUpdates";
 import type { Event, EventStream } from "../types";
 
@@ -457,6 +458,7 @@ export function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user, refreshUser } = useAuthContext();
+  const { settings } = useSettingsContext();
   const [event, setEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -549,10 +551,15 @@ export function EventDetailPage() {
     event.status === "LIVE" &&
     !!event.bettingOpenUntil &&
     new Date(event.bettingOpenUntil) > new Date();
+  const hasRealOdds =
+    event.game === "cs2"
+      ? !!event.hltvId || settings.cs2AllowBetsWithoutHltv
+      : true;
   const canBet =
     (event.status === "UPCOMING" || isLiveBettingOpen) &&
     event.oddsA &&
-    event.oddsB;
+    event.oddsB &&
+    hasRealOdds;
 
   return (
     <div className="max-w-2xl">
@@ -661,6 +668,15 @@ export function EventDetailPage() {
           onSaved={(updated) => setEvent(updated)}
         />
       )}
+
+      {!hasRealOdds &&
+        event.game === "cs2" &&
+        event.status !== "FINISHED" &&
+        event.status !== "CANCELLED" && (
+          <div className="bg-gray-900 rounded-lg p-4 mb-4 text-sm text-gray-400">
+            Odds pending — waiting for HLTV data.
+          </div>
+        )}
 
       {canBet && (
         <div className="bg-gray-900 rounded-lg p-6">

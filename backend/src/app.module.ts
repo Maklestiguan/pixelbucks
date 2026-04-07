@@ -20,6 +20,7 @@ import { ChallengesModule } from './challenges/challenges.module';
 import { FeedbackModule } from './feedback/feedback.module';
 import { HltvModule } from './hltv';
 import { BalanceAuditModule } from './balance-audit';
+import { SettingsModule } from './settings';
 import { RolesGuard } from './common/guards/roles.guard';
 
 @Module({
@@ -63,6 +64,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     RabbitMQModule,
     OutboxModule,
     BalanceAuditModule,
+    SettingsModule,
     AuthModule,
     UsersModule,
     EventsModule,

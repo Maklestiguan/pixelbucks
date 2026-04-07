@@ -127,10 +127,32 @@ export class EventsService {
       }
     }
 
+    // Mark already-synced tournaments as past so they get filtered out of
+    // future match queries. We don't create new rows for past tournaments
+    // we've never seen — only update existing ones whose endAt is null or
+    // still in the future.
+    const [dota2Past, cs2Past] = await Promise.all([
+      this.pandascore.getPastTournaments('dota2'),
+      this.pandascore.getPastTournaments('csgo'),
+    ]);
+    const pastIds = [...dota2Past, ...cs2Past].map((t) => t.id);
+    let markedPast = 0;
+    if (pastIds.length > 0) {
+      const now = new Date();
+      const res = await this.prisma.tournament.updateMany({
+        where: {
+          pandascoreId: { in: pastIds },
+          OR: [{ endAt: null }, { endAt: { gt: now } }],
+        },
+        data: { endAt: now },
+      });
+      markedPast = res.count;
+    }
+
     this.logger.log(
-      `Synced ${synced} tier-filtered tournaments (${dota2Tournaments.length} Dota 2 fetched, ${cs2Tournaments.length} CS2 fetched):\n${syncedNames.join('\n')}`,
+      `Synced ${synced} tier-filtered tournaments (${dota2Tournaments.length} Dota 2 fetched, ${cs2Tournaments.length} CS2 fetched), marked ${markedPast} as past:\n${syncedNames.join('\n')}`,
     );
-    return { synced };
+    return { synced, markedPast };
   }
 
   async syncUpcomingMatches() {
