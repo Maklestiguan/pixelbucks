@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE "user_challenges" ADD COLUMN "metadata" JSONB;
+ALTER TABLE "user_challenges" ADD COLUMN IF NOT EXISTS "metadata" JSONB;
