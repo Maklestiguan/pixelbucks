@@ -4,7 +4,12 @@ import { AdminService } from './admin.service';
 import { BalanceAuditService } from '../balance-audit';
 import { SettingsService } from '../settings';
 import { FeedbackService } from '../feedback/feedback.service';
-import { UpdateEventDto, AdjustBalanceDto, UpdateSettingsDto } from './dto';
+import {
+  UpdateEventDto,
+  AdjustBalanceDto,
+  UpdateSettingsDto,
+  UpdateTournamentDto,
+} from './dto';
 
 @Controller('api/admin')
 @Roles('ADMIN')
@@ -29,6 +34,26 @@ export class AdminController {
   @Patch('events/:id')
   updateEvent(@Param('id') id: string, @Body() dto: UpdateEventDto) {
     return this.adminService.updateEvent(id, dto);
+  }
+
+  @Get('tournaments')
+  listTournaments(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('game') game?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.adminService.listTournaments({
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      game,
+      search,
+    });
+  }
+
+  @Patch('tournaments/:id')
+  updateTournament(@Param('id') id: string, @Body() dto: UpdateTournamentDto) {
+    return this.adminService.updateTournament(id, dto);
   }
 
   @Get('users')

@@ -28,7 +28,7 @@ export class EventsService {
     @Inject(CACHE_MANAGER) private cache: Cache,
   ) {
     // Global default max bet per user per event (cents). Admin can override per event.
-    this.defaultMaxBet = this.config.get<number>('GLOBAL_MAX_BET', 10000);
+    this.defaultMaxBet = this.config.get<number>('GLOBAL_MAX_BET', 25000);
   }
 
   async listEvents(params: {

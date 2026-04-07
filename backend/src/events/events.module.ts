@@ -99,31 +99,31 @@ export class EventsModule implements OnModuleInit {
 
     // Register repeatable jobs
     await this.tournamentsQueue.add(
-      'sync',
+      TOURNAMENTS_QUEUE,
       {},
       { repeat: { every: tournamentsInterval }, ...repeatOpts },
     );
     await this.matchesQueue.add(
-      'sync',
+      MATCHES_QUEUE,
       {},
       { repeat: { every: matchesInterval }, ...repeatOpts },
     );
     await this.liveQueue.add(
-      'detect',
+      LIVE_QUEUE,
       {},
       { repeat: { every: liveInterval }, ...repeatOpts },
     );
     await this.resultsQueue.add(
-      'check',
+      RESULTS_QUEUE,
       {},
       { repeat: { every: resultsInterval }, ...repeatOpts },
     );
 
     // Fire one-off jobs to guarantee immediate run on startup
-    await this.tournamentsQueue.add('sync-now', {}, repeatOpts);
-    await this.matchesQueue.add('sync-now', {}, repeatOpts);
-    await this.liveQueue.add('detect-now', {}, repeatOpts);
-    await this.resultsQueue.add('check-now', {}, repeatOpts);
+    await this.tournamentsQueue.add(`${TOURNAMENTS_QUEUE}-now`, {}, repeatOpts);
+    await this.matchesQueue.add(`${MATCHES_QUEUE}-now`, {}, repeatOpts);
+    await this.liveQueue.add(`${LIVE_QUEUE}-now`, {}, repeatOpts);
+    await this.resultsQueue.add(`${RESULTS_QUEUE}-now`, {}, repeatOpts);
 
     this.logger.log(
       `Events sync jobs registered (tournaments: ${tournamentsInterval}ms, matches: ${matchesInterval}ms, live: ${liveInterval}ms, results: ${resultsInterval}ms)`,

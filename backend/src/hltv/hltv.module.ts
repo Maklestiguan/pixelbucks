@@ -70,19 +70,19 @@ export class HltvModule implements OnModuleInit {
 
     // Register repeatable jobs
     await this.mappingQueue.add(
-      'map',
+      HLTV_MAPPING_QUEUE,
       {},
       { repeat: { every: mappingInterval }, ...repeatOpts },
     );
     await this.oddsQueue.add(
-      'sync',
+      HLTV_ODDS_QUEUE,
       {},
       { repeat: { every: oddsInterval }, ...repeatOpts },
     );
 
     // Fire one-off jobs to guarantee immediate run on startup
-    await this.mappingQueue.add('map-now', {}, repeatOpts);
-    await this.oddsQueue.add('sync-now', {}, repeatOpts);
+    await this.mappingQueue.add(`${HLTV_MAPPING_QUEUE}-now`, {}, repeatOpts);
+    await this.oddsQueue.add(`${HLTV_ODDS_QUEUE}-now`, {}, repeatOpts);
 
     this.logger.log(
       `HLTV sync jobs registered (mapping: ${mappingInterval}ms, odds: ${oddsInterval}ms)`,

@@ -88,6 +88,42 @@ export async function getFeedback(params?: {
   return data;
 }
 
+export interface AdminTournament {
+  id: string;
+  pandascoreId: number;
+  name: string;
+  tier: string;
+  game: "cs2" | "dota2";
+  hltvEventId: number | null;
+  endAt: string | null;
+  createdAt: string;
+  eventsCount: number;
+}
+
+export async function getTournaments(params?: {
+  page?: number;
+  limit?: number;
+  game?: "cs2" | "dota2";
+  search?: string;
+}): Promise<PaginatedResponse<AdminTournament>> {
+  const { data } = await api.get<PaginatedResponse<AdminTournament>>(
+    "/admin/tournaments",
+    { params },
+  );
+  return data;
+}
+
+export async function updateTournament(
+  id: string,
+  body: { hltvEventId?: number | null; endAt?: string | null },
+): Promise<AdminTournament> {
+  const { data } = await api.patch<AdminTournament>(
+    `/admin/tournaments/${id}`,
+    body,
+  );
+  return data;
+}
+
 export interface AppSettings {
   cs2AllowBetsWithoutHltv: boolean;
 }

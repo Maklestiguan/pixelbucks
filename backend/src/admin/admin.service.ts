@@ -9,7 +9,7 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma';
 import { EventsService } from '../events/events.service';
 import { BalanceAuditService } from '../balance-audit';
-import { UpdateEventDto, AdjustBalanceDto } from './dto';
+import { UpdateEventDto, AdjustBalanceDto, UpdateTournamentDto } from './dto';
 import type { MatchStatus, Prisma } from '@prisma/client';
 import {
   TOURNAMENTS_QUEUE,
@@ -114,6 +114,108 @@ export class AdminService {
 
     // Return the formatted event (with streams, league, etc.)
     return this.eventsService.getEvent(id);
+  }
+
+  async listTournaments(params: {
+    page?: number;
+    limit?: number;
+    game?: string;
+    search?: string;
+  }) {
+    const { page = 1, limit = 20, game, search } = params;
+    const where: Prisma.TournamentWhereInput = {};
+    if (game) {
+      where.game = game;
+    }
+    if (search) {
+      where.name = { contains: search, mode: 'insensitive' };
+    }
+
+    const [tournaments, total] = await Promise.all([
+      this.prisma.tournament.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          pandascoreId: true,
+          name: true,
+          tier: true,
+          game: true,
+          hltvEventId: true,
+          endAt: true,
+          createdAt: true,
+          _count: { select: { events: true } },
+        },
+      }),
+      this.prisma.tournament.count({ where }),
+    ]);
+
+    return {
+      data: tournaments.map((t) => ({
+        id: t.id,
+        pandascoreId: t.pandascoreId,
+        name: t.name,
+        tier: t.tier,
+        game: t.game,
+        hltvEventId: t.hltvEventId,
+        endAt: t.endAt,
+        createdAt: t.createdAt,
+        eventsCount: t._count.events,
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async updateTournament(id: string, dto: UpdateTournamentDto) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { id },
+    });
+    if (!tournament) {
+      throw new NotFoundException('Tournament not found');
+    }
+
+    const data: Prisma.TournamentUpdateInput = {};
+    if (dto.hltvEventId !== undefined) {
+      data.hltvEventId = dto.hltvEventId;
+    }
+    if (dto.endAt !== undefined) {
+      data.endAt = dto.endAt;
+    }
+
+    const updated = await this.prisma.tournament.update({
+      where: { id },
+      data,
+      select: {
+        id: true,
+        pandascoreId: true,
+        name: true,
+        tier: true,
+        game: true,
+        hltvEventId: true,
+        endAt: true,
+        createdAt: true,
+        _count: { select: { events: true } },
+      },
+    });
+
+    this.logger.log(`Admin updated tournament ${id}: ${JSON.stringify(dto)}`);
+
+    return {
+      id: updated.id,
+      pandascoreId: updated.pandascoreId,
+      name: updated.name,
+      tier: updated.tier,
+      game: updated.game,
+      hltvEventId: updated.hltvEventId,
+      endAt: updated.endAt,
+      createdAt: updated.createdAt,
+      eventsCount: updated._count.events,
+    };
   }
 
   async listUsers(params: { page?: number; limit?: number; search?: string }) {

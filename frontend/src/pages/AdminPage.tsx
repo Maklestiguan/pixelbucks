@@ -9,9 +9,16 @@ import type {
   BalanceAuditEntry,
   FeedbackEntry,
 } from "../types";
-import type { JobScheduleEntry } from "../api/admin.api";
+import type { JobScheduleEntry, AdminTournament } from "../api/admin.api";
 
-type Tab = "stats" | "users" | "audit" | "feedback" | "jobs" | "settings";
+type Tab =
+  | "stats"
+  | "users"
+  | "tournaments"
+  | "audit"
+  | "feedback"
+  | "jobs"
+  | "settings";
 
 export function AdminPage() {
   const { user } = useAuthContext();
@@ -24,8 +31,18 @@ export function AdminPage() {
   return (
     <div>
       <h1 className="text-2xl font-bold mb-4">Admin Panel</h1>
-      <div className="flex gap-2 mb-6">
-        {(["stats", "users", "audit", "feedback", "jobs", "settings"] as Tab[]).map((t) => (
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {(
+          [
+            "stats",
+            "users",
+            "tournaments",
+            "audit",
+            "feedback",
+            "jobs",
+            "settings",
+          ] as Tab[]
+        ).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -48,6 +65,7 @@ export function AdminPage() {
 
       {tab === "stats" && <StatsTab />}
       {tab === "users" && <UsersTab />}
+      {tab === "tournaments" && <TournamentsTab />}
       {tab === "audit" && <AuditTab />}
       {tab === "feedback" && <FeedbackTab />}
       {tab === "jobs" && <JobsTab />}
@@ -884,5 +902,278 @@ function SettingsTab() {
         </p>
       )}
     </div>
+  );
+}
+
+function TournamentsTab() {
+  const [data, setData] = useState<PaginatedResponse<AdminTournament> | null>(
+    null,
+  );
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [game, setGame] = useState<"all" | "cs2" | "dota2">("all");
+  const [page, setPage] = useState(1);
+
+  const fetchTournaments = useCallback(() => {
+    setLoading(true);
+    adminApi
+      .getTournaments({
+        page,
+        limit: 20,
+        game: game === "all" ? undefined : game,
+        search: search || undefined,
+      })
+      .then(setData)
+      .finally(() => setLoading(false));
+  }, [page, search, game]);
+
+  useEffect(() => {
+    fetchTournaments();
+  }, [fetchTournaments]);
+
+  const handleUpdated = (updated: AdminTournament) => {
+    setData((prev) =>
+      prev
+        ? {
+            ...prev,
+            data: prev.data.map((t) => (t.id === updated.id ? updated : t)),
+          }
+        : prev,
+    );
+  };
+
+  return (
+    <div>
+      <div className="flex gap-3 mb-4 flex-wrap">
+        <input
+          type="text"
+          placeholder="Search by name..."
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
+          className="bg-gray-800 text-white px-4 py-2 rounded border border-gray-700 focus:border-purple-500 focus:outline-none text-sm w-full max-w-sm"
+        />
+        <select
+          value={game}
+          onChange={(e) => {
+            setGame(e.target.value as "all" | "cs2" | "dota2");
+            setPage(1);
+          }}
+          className="bg-gray-800 text-white px-3 py-2 rounded border border-gray-700 focus:border-purple-500 focus:outline-none text-sm"
+        >
+          <option value="all">All games</option>
+          <option value="cs2">CS2</option>
+          <option value="dota2">Dota 2</option>
+        </select>
+      </div>
+
+      {loading && <p className="text-gray-400">Loading...</p>}
+
+      {data && (
+        <>
+          <div className="bg-gray-900 rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-400 border-b border-gray-800">
+                  <th className="text-left px-4 py-2">Name</th>
+                  <th className="text-left px-4 py-2">Game</th>
+                  <th className="text-left px-4 py-2">Tier</th>
+                  <th className="text-right px-4 py-2">Events</th>
+                  <th className="text-left px-4 py-2">HLTV Event ID</th>
+                  <th className="text-left px-4 py-2">End At</th>
+                  <th className="px-4 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.data.map((t) => (
+                  <TournamentRow
+                    key={t.id}
+                    tournament={t}
+                    onUpdated={handleUpdated}
+                  />
+                ))}
+                {data.data.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="px-4 py-4 text-gray-400 text-center"
+                    >
+                      No tournaments found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {data.totalPages > 1 && (
+            <div className="flex gap-2 mt-4 justify-center">
+              <button
+                disabled={page <= 1}
+                onClick={() => setPage(page - 1)}
+                className="px-3 py-1 rounded bg-gray-800 text-gray-400 hover:text-white disabled:opacity-50"
+              >
+                Prev
+              </button>
+              <span className="px-3 py-1 text-gray-400">
+                {page} / {data.totalPages}
+              </span>
+              <button
+                disabled={page >= data.totalPages}
+                onClick={() => setPage(page + 1)}
+                className="px-3 py-1 rounded bg-gray-800 text-gray-400 hover:text-white disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function toDatetimeLocalValue(iso: string | null): string {
+  if (!iso) {
+    return "";
+  }
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) {
+    return "";
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function TournamentRow({
+  tournament,
+  onUpdated,
+}: {
+  tournament: AdminTournament;
+  onUpdated: (t: AdminTournament) => void;
+}) {
+  const [hltvStr, setHltvStr] = useState(
+    tournament.hltvEventId != null ? String(tournament.hltvEventId) : "",
+  );
+  const [endAtStr, setEndAtStr] = useState(
+    toDatetimeLocalValue(tournament.endAt),
+  );
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const initialHltv =
+    tournament.hltvEventId != null ? String(tournament.hltvEventId) : "";
+  const initialEndAt = toDatetimeLocalValue(tournament.endAt);
+  const dirty = hltvStr !== initialHltv || endAtStr !== initialEndAt;
+
+  const handleSave = async () => {
+    const body: { hltvEventId?: number | null; endAt?: string | null } = {};
+
+    if (hltvStr !== initialHltv) {
+      if (hltvStr.trim() === "") {
+        body.hltvEventId = null;
+      } else {
+        const parsed = parseInt(hltvStr, 10);
+        if (isNaN(parsed) || parsed <= 0) {
+          setMsg("Invalid HLTV ID");
+          setTimeout(() => setMsg(""), 2000);
+          return;
+        }
+        body.hltvEventId = parsed;
+      }
+    }
+
+    if (endAtStr !== initialEndAt) {
+      if (endAtStr.trim() === "") {
+        body.endAt = null;
+      } else {
+        const d = new Date(endAtStr);
+        if (isNaN(d.getTime())) {
+          setMsg("Invalid date");
+          setTimeout(() => setMsg(""), 2000);
+          return;
+        }
+        body.endAt = d.toISOString();
+      }
+    }
+
+    setSaving(true);
+    setMsg("");
+    try {
+      const updated = await adminApi.updateTournament(tournament.id, body);
+      onUpdated(updated);
+      setMsg("Saved");
+      setTimeout(() => setMsg(""), 2000);
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      setMsg(axiosErr.response?.data?.message || "Failed");
+      setTimeout(() => setMsg(""), 3000);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <tr className="border-b border-gray-800/50">
+      <td className="px-4 py-2 font-medium">{tournament.name}</td>
+      <td className="px-4 py-2 text-gray-400 uppercase text-xs">
+        {tournament.game}
+      </td>
+      <td className="px-4 py-2 text-gray-400 uppercase text-xs">
+        {tournament.tier}
+      </td>
+      <td className="px-4 py-2 text-right font-mono text-gray-400">
+        {tournament.eventsCount}
+      </td>
+      <td className="px-4 py-2">
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            value={hltvStr}
+            onChange={(e) => setHltvStr(e.target.value)}
+            placeholder="—"
+            className="bg-gray-800 text-white px-2 py-1 rounded border border-gray-700 focus:border-purple-500 focus:outline-none font-mono text-xs w-24"
+          />
+          {tournament.hltvEventId != null && (
+            <a
+              href={`https://www.hltv.org/events/${tournament.hltvEventId}/x`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-purple-400 hover:text-purple-300 text-xs"
+            >
+              ↗
+            </a>
+          )}
+        </div>
+      </td>
+      <td className="px-4 py-2">
+        <input
+          type="datetime-local"
+          value={endAtStr}
+          onChange={(e) => setEndAtStr(e.target.value)}
+          className="bg-gray-800 text-white px-2 py-1 rounded border border-gray-700 focus:border-purple-500 focus:outline-none text-xs"
+        />
+      </td>
+      <td className="px-4 py-2 text-right">
+        <div className="flex items-center justify-end gap-2">
+          {msg && (
+            <span
+              className={`text-xs ${msg === "Saved" ? "text-green-400" : "text-red-400"}`}
+            >
+              {msg}
+            </span>
+          )}
+          <button
+            onClick={handleSave}
+            disabled={saving || !dirty}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-xs font-medium disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            {saving ? "..." : "Save"}
+          </button>
+        </div>
+      </td>
+    </tr>
   );
 }
