@@ -326,7 +326,7 @@ function UserAutocomplete({
   const [suggestions, setSuggestions] = useState<AdminUser[]>([]);
   const [open, setOpen] = useState(false);
   const [selectedName, setSelectedName] = useState("");
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
