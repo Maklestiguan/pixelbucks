@@ -106,20 +106,20 @@ export class EventsService {
           where: { pandascoreId: t.id },
           create: {
             pandascoreId: t.id,
-            name: t.name,
+            name: `${t.league.name ?? 'Unknown league'} ${t.serie?.full_name ?? 'Unknown serie'} ${t.name}`,
             tier,
             game,
             endAt,
           },
           update: {
-            name: t.name,
+            name: `${t.league.name ?? 'Unknown league'} ${t.serie?.full_name ?? 'Unknown serie'} ${t.name}`,
             tier,
             endAt,
           },
         });
         synced++;
         syncedNames.push(
-          `[${game}/${tier}] ${t.league?.name || '?'} / ${t.name}`,
+          `[${game}/${tier}] ${t.league?.name || 'Unknown league'} / ${t.name}`,
         );
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);

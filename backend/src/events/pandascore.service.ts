@@ -72,6 +72,7 @@ export interface PandascoreTournament {
   serie: {
     id: number;
     tier: string | null;
+    full_name: string;
   } | null;
   league: {
     id: number;

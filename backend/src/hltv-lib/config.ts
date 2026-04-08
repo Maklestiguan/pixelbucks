@@ -28,7 +28,7 @@ export function createProxiedLoadPage(
       if (!proxyUrl) break;
 
       try {
-        const proxiedImpit = new Impit({ browser: 'chrome', proxyUrl });
+        const proxiedImpit = new Impit({ browser: 'firefox144', proxyUrl });
         const res = await proxiedImpit.fetch(url);
         return res.text();
       } catch {
