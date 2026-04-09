@@ -1,9 +1,10 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
-import { Job } from 'bullmq';
 import { ChatService } from './chat.service';
 
-@Processor('chat')
+export const CHAT_QUEUE = 'chat';
+
+@Processor(CHAT_QUEUE)
 export class ChatCleanupProcessor extends WorkerHost {
   private readonly logger = new Logger(ChatCleanupProcessor.name);
 
@@ -11,11 +12,9 @@ export class ChatCleanupProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job) {
-    if (job.name === 'cleanup-old-messages') {
-      const deleted = await this.chatService.cleanupOldMessages(14);
-      this.logger.log(`Chat cleanup job done: ${deleted} messages removed`);
-      return { deleted };
-    }
+  async process() {
+    const deleted = await this.chatService.cleanupOldMessages(14);
+    this.logger.log(`Chat cleanup job done: ${deleted} messages removed`);
+    return { deleted };
   }
 }

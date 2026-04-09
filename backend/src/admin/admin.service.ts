@@ -23,6 +23,7 @@ import {
 } from '../hltv/hltv-sync.processor';
 import { REPLENISH_QUEUE } from '../users/replenish.processor';
 import { CHALLENGES_QUEUE } from '../challenges/challenges.processor';
+import { CHAT_QUEUE } from '../chat/chat-cleanup.processor';
 
 const VALID_STATUSES: MatchStatus[] = [
   'UPCOMING',
@@ -49,7 +50,7 @@ export class AdminService {
     @InjectQueue(HLTV_ODDS_QUEUE) hltvOddsQueue: Queue,
     @InjectQueue(REPLENISH_QUEUE) replenishQueue: Queue,
     @InjectQueue(CHALLENGES_QUEUE) challengesQueue: Queue,
-    @InjectQueue('chat') chatQueue: Queue,
+    @InjectQueue(CHAT_QUEUE) chatQueue: Queue,
   ) {
     this.queues = [
       {
@@ -72,7 +73,7 @@ export class AdminService {
         queue: replenishQueue,
       },
       { name: CHALLENGES_QUEUE, label: 'Challenges', queue: challengesQueue },
-      { name: 'chat', label: 'Chat Cleanup', queue: chatQueue },
+      { name: CHAT_QUEUE, label: 'Chat Cleanup', queue: chatQueue },
     ];
   }
 

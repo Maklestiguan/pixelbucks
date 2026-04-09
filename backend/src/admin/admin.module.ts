@@ -16,6 +16,7 @@ import {
 } from '../hltv/hltv-sync.processor';
 import { REPLENISH_QUEUE } from '../users/replenish.processor';
 import { CHALLENGES_QUEUE } from '../challenges/challenges.processor';
+import { CHAT_QUEUE } from '../chat/chat-cleanup.processor';
 
 @Module({
   imports: [
@@ -30,7 +31,7 @@ import { CHALLENGES_QUEUE } from '../challenges/challenges.processor';
       { name: HLTV_ODDS_QUEUE },
       { name: REPLENISH_QUEUE },
       { name: CHALLENGES_QUEUE },
-      { name: 'chat' },
+      { name: CHAT_QUEUE },
     ),
   ],
   controllers: [AdminController],

@@ -5,7 +5,7 @@ import { BullModule, InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
-import { ChatCleanupProcessor } from './chat-cleanup.processor';
+import { ChatCleanupProcessor, CHAT_QUEUE } from './chat-cleanup.processor';
 
 @Module({
   imports: [
@@ -16,7 +16,7 @@ import { ChatCleanupProcessor } from './chat-cleanup.processor';
         secret: config.get<string>('JWT_SECRET'),
       }),
     }),
-    BullModule.registerQueue({ name: 'chat' }),
+    BullModule.registerQueue({ name: CHAT_QUEUE }),
   ],
   providers: [ChatGateway, ChatService, ChatCleanupProcessor],
   exports: [ChatService],
@@ -24,16 +24,33 @@ import { ChatCleanupProcessor } from './chat-cleanup.processor';
 export class ChatModule implements OnModuleInit {
   private readonly logger = new Logger(ChatModule.name);
 
-  constructor(@InjectQueue('chat') private chatQueue: Queue) {}
+  constructor(@InjectQueue(CHAT_QUEUE) private chatQueue: Queue) {}
 
   async onModuleInit() {
-    // Cleanup old messages daily
-    await this.chatQueue.upsertJobScheduler(
-      'cleanup-old-messages',
-      { pattern: '0 3 * * *' }, // 3 AM UTC daily
-      { name: 'cleanup-old-messages' },
+    // Clean slate: remove old repeatable jobs and drain stale delayed/waiting jobs
+    const jobs = await this.chatQueue.getRepeatableJobs();
+    for (const job of jobs) {
+      await this.chatQueue.removeRepeatableByKey(job.key);
+    }
+    await this.chatQueue.drain();
+
+    const pattern = '0 3 * * *'; // 3 AM UTC daily
+
+    const repeatOpts = {
+      removeOnComplete: { count: 10 },
+      removeOnFail: { count: 50 },
+    };
+
+    // Register repeatable job
+    await this.chatQueue.add(
+      CHAT_QUEUE,
+      {},
+      { repeat: { pattern }, ...repeatOpts },
     );
 
-    this.logger.log('Chat cleanup job scheduled (daily at 3 AM UTC)');
+    // Fire one-off job to guarantee immediate run on startup
+    await this.chatQueue.add(`${CHAT_QUEUE}-now`, {}, repeatOpts);
+
+    this.logger.log(`Chat cleanup job registered (pattern: ${pattern})`);
   }
 }

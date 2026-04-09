@@ -22,22 +22,32 @@ export class ChallengesModule implements OnModuleInit {
   constructor(@InjectQueue(CHALLENGES_QUEUE) private challengesQueue: Queue) {}
 
   async onModuleInit() {
-    const existing = await this.challengesQueue.getRepeatableJobs();
-    for (const job of existing) {
+    // Clean slate: remove old repeatable jobs and drain stale delayed/waiting jobs
+    const jobs = await this.challengesQueue.getRepeatableJobs();
+    for (const job of jobs) {
       await this.challengesQueue.removeRepeatableByKey(job.key);
     }
+    await this.challengesQueue.drain();
 
-    // Generate/expire challenges every 15 minutes
+    const interval = 15 * 60 * 1000; // 15 minutes
+
+    const repeatOpts = {
+      removeOnComplete: { count: 10 },
+      removeOnFail: { count: 50 },
+    };
+
+    // Register repeatable job
     await this.challengesQueue.add(
-      'maintain-challenges',
+      CHALLENGES_QUEUE,
       {},
-      {
-        repeat: { every: 15 * 60 * 1000, immediately: true },
-        removeOnComplete: { count: 10 },
-        removeOnFail: { count: 50 },
-      },
+      { repeat: { every: interval }, ...repeatOpts },
     );
 
-    this.logger.log('Challenges maintenance job registered (every 15 min)');
+    // Fire one-off job to guarantee immediate run on startup
+    await this.challengesQueue.add(`${CHALLENGES_QUEUE}-now`, {}, repeatOpts);
+
+    this.logger.log(
+      `Challenges maintenance job registered (every ${interval}ms)`,
+    );
   }
 }

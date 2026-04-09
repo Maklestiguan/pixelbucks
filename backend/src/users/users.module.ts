@@ -18,23 +18,32 @@ export class UsersModule implements OnModuleInit {
   constructor(@InjectQueue(REPLENISH_QUEUE) private replenishQueue: Queue) {}
 
   async onModuleInit() {
-    // Remove old repeatable jobs
-    const existing = await this.replenishQueue.getRepeatableJobs();
-    for (const job of existing) {
+    // Clean slate: remove old repeatable jobs and drain stale delayed/waiting jobs
+    const jobs = await this.replenishQueue.getRepeatableJobs();
+    for (const job of jobs) {
       await this.replenishQueue.removeRepeatableByKey(job.key);
     }
+    await this.replenishQueue.drain();
 
-    // Run weekly replenishment check every hour (credits users whose 7-day timer expired)
+    const interval = 60 * 60 * 1000; // hourly check (credits users whose 7-day timer expired)
+
+    const repeatOpts = {
+      removeOnComplete: { count: 10 },
+      removeOnFail: { count: 50 },
+    };
+
+    // Register repeatable job
     await this.replenishQueue.add(
-      'weekly-replenish',
+      REPLENISH_QUEUE,
       {},
-      {
-        repeat: { every: 60 * 60 * 1000 },
-        removeOnComplete: { count: 10 },
-        removeOnFail: { count: 50 },
-      },
+      { repeat: { every: interval }, ...repeatOpts },
     );
 
-    this.logger.log('Weekly replenishment job registered (hourly check)');
+    // Fire one-off job to guarantee immediate run on startup
+    await this.replenishQueue.add(`${REPLENISH_QUEUE}-now`, {}, repeatOpts);
+
+    this.logger.log(
+      `Weekly replenishment job registered (every ${interval}ms)`,
+    );
   }
 }
