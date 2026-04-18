@@ -151,13 +151,24 @@ export class UsersService {
 
   /** Credit 500 PB to a single user and update lastReplenishedAt */
   async replenishUser(userId: string) {
-    await this.prisma.user.update({
-      where: { id: userId },
+    // Conditional update guards against duplicate messages: if the row was
+    // already bumped within the last 7 days, count === 0 and we skip.
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - REPLENISH_INTERVAL_DAYS);
+
+    const res = await this.prisma.user.updateMany({
+      where: { id: userId, lastReplenishedAt: { lt: cutoff } },
       data: {
         balance: { increment: REPLENISH_AMOUNT },
         lastReplenishedAt: new Date(),
       },
     });
+
+    if (res.count === 0) {
+      this.logger.debug(`Skipped duplicate replenish for ${userId}`);
+      return;
+    }
+
     this.logger.log(
       `Replenished user ${userId} with ${REPLENISH_AMOUNT / 100} PB`,
     );

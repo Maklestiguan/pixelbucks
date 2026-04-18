@@ -3,7 +3,7 @@ import { BetUpdateConsumer } from './bet-update.consumer';
 describe('BetUpdateConsumer', () => {
   let consumer: BetUpdateConsumer;
   let prisma: {
-    bet: { update: jest.Mock };
+    bet: { updateMany: jest.Mock };
     user: { update: jest.Mock };
   };
   let channel: { publish: jest.Mock };
@@ -11,7 +11,7 @@ describe('BetUpdateConsumer', () => {
 
   beforeEach(() => {
     prisma = {
-      bet: { update: jest.fn().mockResolvedValue({}) },
+      bet: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       user: { update: jest.fn().mockResolvedValue({}) },
     };
     channel = { publish: jest.fn().mockResolvedValue(undefined) };
@@ -21,7 +21,11 @@ describe('BetUpdateConsumer', () => {
     (consumer as any).prisma = prisma;
     (consumer as any).channel = channel;
     (consumer as any).balanceAudit = balanceAudit;
-    (consumer as any).logger = { debug: jest.fn(), log: jest.fn() };
+    (consumer as any).logger = {
+      debug: jest.fn(),
+      log: jest.fn(),
+      warn: jest.fn(),
+    };
   });
 
   describe('processBetUpdate (won)', () => {
@@ -35,9 +39,13 @@ describe('BetUpdateConsumer', () => {
         oddsAtPlacement: 2.5,
       });
 
-      expect(prisma.bet.update).toHaveBeenCalledWith({
-        where: { id: 'bet-1' },
-        data: { status: 'WON', payout: 2500 },
+      expect(prisma.bet.updateMany).toHaveBeenCalledWith({
+        where: { id: 'bet-1', balanceAppliedAt: null },
+        data: {
+          status: 'WON',
+          payout: 2500,
+          balanceAppliedAt: expect.any(Date),
+        },
       });
 
       expect(prisma.user.update).toHaveBeenCalledWith({
@@ -48,12 +56,65 @@ describe('BetUpdateConsumer', () => {
         },
       });
 
-      // Challenge tracking published via RabbitMQ
       expect(channel.publish).toHaveBeenCalledWith(
         'users',
         'challenge.progress',
         { userId: 'user-1', action: 'win_bet' },
       );
+    });
+
+    it('should skip balance credit when bet is already applied', async () => {
+      prisma.bet.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await (consumer as any).processBetUpdate({
+        betId: 'bet-1',
+        userId: 'user-1',
+        action: 'won',
+        amount: 1000,
+        payout: 2500,
+        oddsAtPlacement: 2.5,
+      });
+
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(channel.publish).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('processBetUpdate (lost)', () => {
+    it('should mark bet applied and decrement totalProfit', async () => {
+      await (consumer as any).processBetUpdate({
+        betId: 'bet-3',
+        userId: 'user-3',
+        action: 'lost',
+        amount: 400,
+        payout: 0,
+        oddsAtPlacement: 1.8,
+      });
+
+      expect(prisma.bet.updateMany).toHaveBeenCalledWith({
+        where: { id: 'bet-3', balanceAppliedAt: null },
+        data: { balanceAppliedAt: expect.any(Date) },
+      });
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-3' },
+        data: { totalProfit: { decrement: 400 } },
+      });
+    });
+
+    it('should skip profit decrement when bet is already applied', async () => {
+      prisma.bet.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await (consumer as any).processBetUpdate({
+        betId: 'bet-3',
+        userId: 'user-3',
+        action: 'lost',
+        amount: 400,
+        payout: 0,
+        oddsAtPlacement: 1.8,
+      });
+
+      expect(prisma.user.update).not.toHaveBeenCalled();
     });
   });
 
@@ -68,9 +129,13 @@ describe('BetUpdateConsumer', () => {
         oddsAtPlacement: 1.5,
       });
 
-      expect(prisma.bet.update).toHaveBeenCalledWith({
-        where: { id: 'bet-2' },
-        data: { status: 'CANCELLED', payout: 0 },
+      expect(prisma.bet.updateMany).toHaveBeenCalledWith({
+        where: { id: 'bet-2', balanceAppliedAt: null },
+        data: {
+          status: 'CANCELLED',
+          payout: 0,
+          balanceAppliedAt: expect.any(Date),
+        },
       });
 
       expect(prisma.user.update).toHaveBeenCalledWith({
@@ -78,8 +143,22 @@ describe('BetUpdateConsumer', () => {
         data: { balance: { increment: 500 } },
       });
 
-      // No challenge progress for refunds
       expect(channel.publish).not.toHaveBeenCalled();
+    });
+
+    it('should skip refund when bet is already applied', async () => {
+      prisma.bet.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await (consumer as any).processBetUpdate({
+        betId: 'bet-2',
+        userId: 'user-2',
+        action: 'refund',
+        amount: 500,
+        payout: 0,
+        oddsAtPlacement: 1.5,
+      });
+
+      expect(prisma.user.update).not.toHaveBeenCalled();
     });
   });
 });

@@ -131,13 +131,22 @@ export class BetUpdateConsumer implements OnModuleInit, OnModuleDestroy {
   private async processBetUpdate(payload: BetUpdateMessage) {
     const { betId, userId, action, amount, payout } = payload;
 
+    // Atomic idempotency guard: only the first delivery transitions
+    // balanceAppliedAt from null → now. Duplicates return count 0 and skip
+    // all balance/profit side effects. Assumes resolution is terminal —
+    // event.cancelled is only ever published for PENDING events today.
     if (action === 'won') {
       const profit = payout - amount;
 
-      await this.prisma.bet.update({
-        where: { id: betId },
-        data: { status: 'WON', payout },
+      const { count } = await this.prisma.bet.updateMany({
+        where: { id: betId, balanceAppliedAt: null },
+        data: { status: 'WON', payout, balanceAppliedAt: new Date() },
       });
+
+      if (count === 0) {
+        this.logger.warn(`Bet ${betId}: WON skipped (already applied)`);
+        return;
+      }
 
       await this.prisma.user.update({
         where: { id: userId },
@@ -155,7 +164,6 @@ export class BetUpdateConsumer implements OnModuleInit, OnModuleDestroy {
         .log({ userId, amount: payout, reason: 'bet_won', referenceId: betId })
         .catch(() => {});
 
-      // Track win_bet challenge progress via RabbitMQ
       this.channel
         .publish(EXCHANGES.USERS, ROUTING_KEYS.CHALLENGE_PROGRESS, {
           userId,
@@ -165,6 +173,18 @@ export class BetUpdateConsumer implements OnModuleInit, OnModuleDestroy {
     }
 
     if (action === 'lost') {
+      // Status is already LOST (bulk-set by BetsService.resolveEventBets).
+      // balanceAppliedAt is the only idempotency signal for the profit decrement.
+      const { count } = await this.prisma.bet.updateMany({
+        where: { id: betId, balanceAppliedAt: null },
+        data: { balanceAppliedAt: new Date() },
+      });
+
+      if (count === 0) {
+        this.logger.warn(`Bet ${betId}: LOST skipped (already applied)`);
+        return;
+      }
+
       await this.prisma.user.update({
         where: { id: userId },
         data: { totalProfit: { decrement: amount } },
@@ -176,10 +196,19 @@ export class BetUpdateConsumer implements OnModuleInit, OnModuleDestroy {
     }
 
     if (action === 'refund') {
-      await this.prisma.bet.update({
-        where: { id: betId },
-        data: { status: 'CANCELLED', payout: 0 },
+      const { count } = await this.prisma.bet.updateMany({
+        where: { id: betId, balanceAppliedAt: null },
+        data: {
+          status: 'CANCELLED',
+          payout: 0,
+          balanceAppliedAt: new Date(),
+        },
       });
+
+      if (count === 0) {
+        this.logger.warn(`Bet ${betId}: REFUND skipped (already applied)`);
+        return;
+      }
 
       await this.prisma.user.update({
         where: { id: userId },

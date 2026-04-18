@@ -113,18 +113,19 @@ model Event {
 }
 
 model Bet {
-  id              String    @id @default(uuid())
-  userId          String    @map("user_id")
-  eventId         String    @map("event_id")
-  amount          Int       // cents wagered
-  selection       String    // "a" | "b"
-  oddsAtPlacement Float     @map("odds_at_placement")
-  status          BetStatus @default(PENDING)
-  payout          Int?      // total return = amount + profit
-  createdAt       DateTime  @default(now()) @map("created_at")
+  id               String    @id @default(uuid())
+  userId           String    @map("user_id")
+  eventId          String    @map("event_id")
+  amount           Int       // cents wagered
+  selection        String    // "a" | "b"
+  oddsAtPlacement  Float     @map("odds_at_placement")
+  status           BetStatus @default(PENDING)
+  payout           Int?      // total return = amount + profit
+  balanceAppliedAt DateTime? @map("balance_applied_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
 
-  user            User      @relation(fields: [userId], references: [id])
-  event           Event     @relation(fields: [eventId], references: [id])
+  user             User      @relation(fields: [userId], references: [id])
+  event            Event     @relation(fields: [eventId], references: [id])
 
   @@index([userId])
   @@index([eventId])
